@@ -10,6 +10,8 @@ import { supabase } from './supabase.js';
 import { newId, idFor } from './lib/ids.js';
 
 const KEY = 'shootplus.v1';
+// shoot+ shares a Supabase project with lifestyle+, so it keeps its own table.
+export const TABLE = 'shoot_records';
 
 /* ---------- Local state ---------- */
 
@@ -259,7 +261,7 @@ async function pull(since, remoteWins) {
   const page = 1000;
   for (let from = 0; ; from += page) {
     let q = supabase
-      .from('records')
+      .from(TABLE)
       .select('id, kind, data, updated_at, deleted, synced_at')
       .order('synced_at', { ascending: true })
       .range(from, from + page - 1);
@@ -328,7 +330,7 @@ export async function sync() {
       }));
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500);
-      const { error } = await supabase.from('records').upsert(chunk);
+      const { error } = await supabase.from(TABLE).upsert(chunk);
       if (error) throw error;
       for (const row of chunk) {
         if (db.records[row.id] && db.records[row.id].updated_at === row.updated_at) db.dirty.delete(row.id);

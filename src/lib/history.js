@@ -1,26 +1,26 @@
 // Undo history: earlier versions of your records, kept on the server for 90 days
-// (supabase/history.sql), plus deleted records and a backup file from this device.
+// (supabase/shoot-plus.sql), plus deleted records and a backup file from this device.
 import { supabase } from '../supabase.js';
 import { put, allRecords, SETTINGS_ID } from '../store.js';
 import { todayISO } from './dates.js';
 
-const SETUP = 'History isn’t turned on yet. Run supabase/history.sql in the Supabase SQL Editor.';
+const SETUP = 'History isn’t turned on yet. Run supabase/shoot-plus.sql in the Supabase SQL Editor.';
 
 async function rows(query) {
   if (!supabase) throw new Error('Sign in to see history.');
   const { data, error } = await query;
-  if (error) throw new Error(/record_history|does not exist|schema cache/i.test(error.message) ? SETUP : error.message);
+  if (error) throw new Error(/shoot_record_history|does not exist|schema cache/i.test(error.message) ? SETUP : error.message);
   return data || [];
 }
 const COLS = 'hid, record_id, kind, data, deleted, updated_at, replaced_at';
 
 /** Earlier versions of your settings (tax rate, colors…), newest first. */
 export const settingsVersions = () =>
-  rows(supabase.from('record_history').select(COLS).eq('record_id', SETTINGS_ID).order('replaced_at', { ascending: false }).limit(30));
+  rows(supabase.from('shoot_record_history').select(COLS).eq('record_id', SETTINGS_ID).order('replaced_at', { ascending: false }).limit(30));
 
 /** The latest changes to everything else, newest first. */
 export const recentChanges = () =>
-  rows(supabase.from('record_history').select(COLS).neq('kind', 'settings').order('replaced_at', { ascending: false }).limit(80));
+  rows(supabase.from('shoot_record_history').select(COLS).neq('kind', 'settings').order('replaced_at', { ascending: false }).limit(80));
 
 /** Puts a version back. It syncs to your other devices like any other edit. */
 export const restoreVersion = (v) => put(v.kind, { ...v.data, id: v.record_id || v.id });

@@ -26,15 +26,14 @@ It starts with sample data. Tap **Clear it** at the top to start fresh.
 
 ## Set up the database (Supabase)
 
-Use a **new** Supabase project so shoot+ stays separate from lifestyle+.
+shoot+ lives in the **same Supabase project as lifestyle+**, in its own tables (`shoot_records` and
+`shoot_record_history`), so the two apps never see or change each other's data. Your sign-in is shared:
+the same email and password work in both.
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. **SQL Editor → New query**: paste `supabase/schema.sql`, press **Run**. Then do the same with
-   `supabase/history.sql` (undo history; it uses pg_cron, which you can turn on under Database → Extensions).
-3. **Project Settings → API**: copy the **Project URL** and the **anon public** key.
-4. Copy `.env.example` to `.env` and paste the two values in. Restart `npm run dev`.
-5. Open **Settings** (top right) and create an account. To skip the confirmation email, turn off
-   **Authentication → Providers → Email → Confirm email**.
+1. In the lifestyle+ Supabase project, open **SQL Editor → New query**, paste `supabase/shoot-plus.sql`, press **Run**.
+2. **Project Settings → API**: copy the **Project URL** and the **anon public** key (the same ones lifestyle+ uses).
+3. Copy `.env.example` to `.env` and paste the two values in. Restart `npm run dev`.
+4. Open **Settings** (top right) and sign in with your lifestyle+ account.
 
 ## Put it on your iPhone
 
