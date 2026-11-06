@@ -120,6 +120,19 @@ export function seed() {
     if (date <= today) items.push(['taxpay', { id: idFor(`sample-tax-${i}`), date, amount, note: `Q${i + 1} estimate`, sample: true }]);
   });
 
+  // Two Stripe payments waiting on Home, so you can see how that works.
+  [
+    { chargeId: 'ch_sample_1', days: -1, amount: 225, fee: 6.83, name: 'Maya Robinson', what: 'Senior photos — Classic', via: 'Payment link', method: 'Apple Pay' },
+    { chargeId: 'ch_sample_2', days: 0, amount: 95, fee: 2.85, name: '', what: '', via: 'Tap to Pay', method: 'Tap to Pay' },
+  ].forEach((p) => {
+    const date = addDays(today, p.days);
+    const { days: _d, ...rest } = p;
+    items.push(['stripe', {
+      ...rest, id: idFor(`stripe:${p.chargeId}`), sample: true, date, created: Math.floor(new Date(`${date}T12:00:00`).getTime() / 1000),
+      refunded: 0, net: Math.round((p.amount - p.fee) * 100) / 100, email: '', receipt: '', status: 'new', bookingId: '',
+    }]);
+  });
+
   items.push(['settings', { ...DEFAULT_SETTINGS, id: SETTINGS_ID, sample: true, yearGoal: 12000 }]);
   putMany(items);
 }

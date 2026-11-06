@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { todayISO, fmt } from '../lib/dates.js';
-import { useBiz, calc, saveBooking, money } from '../lib/biz.js';
+import { useBiz, calc, saveBooking, money, clientFor } from '../lib/biz.js';
+import { markLinked } from '../lib/stripe.js';
 import { haptic } from '../lib/haptics.js';
 import { cheer } from '../lib/cheer.js';
 import { Sheet, Icon } from './ui.jsx';
@@ -43,7 +44,11 @@ export default function NewBooking({ preset = {}, onClose }) {
   };
 
   const save = () => {
-    const out = saveBooking({ ...b, createdAt: Date.now() });
+    // A name typed but not picked (or a Stripe payer's name) becomes the client: an existing one with that name, or a new one.
+    const { newClientName, ...rest } = b;
+    const clientId = rest.clientId || (newClientName && newClientName.trim() ? clientFor(biz, newClientName) : '');
+    const out = saveBooking({ ...rest, clientId, createdAt: Date.now() });
+    markLinked(rest.stripeId, out.id);
     haptic('success');
     const fab = document.querySelector('.fab');
     setSaved(out);
@@ -62,7 +67,7 @@ export default function NewBooking({ preset = {}, onClose }) {
             <path d="M30 52 44 66 71 36" />
           </svg>
           <p className="cap-done-title">{money($.gross)} · {sv ? sv.name : 'Booking'}</p>
-          <p className="muted">{fmt(b.date, { weekday: 'long', month: 'long', day: 'numeric' })}{b.clientId && biz.clientById[b.clientId] ? ` · ${biz.clientById[b.clientId].name}` : ''}</p>
+          <p className="muted">{fmt(b.date, { weekday: 'long', month: 'long', day: 'numeric' })}{saved.clientId && biz.clientById[saved.clientId] ? ` · ${biz.clientById[saved.clientId].name}` : ''}</p>
         </div>
       </Sheet>
     );
@@ -118,7 +123,9 @@ export default function NewBooking({ preset = {}, onClose }) {
         {step === 2 && (
           <div className="cap-q">
             <p className="cap-label">Who was it for?</p>
-            <ClientPick biz={biz} value={b.clientId} onChange={(clientId) => set({ clientId })} autoFocus={!b.clientId} />
+            <ClientPick biz={biz} value={b.clientId} onChange={(clientId) => set({ clientId, newClientName: '' })} autoFocus={!b.clientId}
+              initialQuery={b.newClientName || ''} onQuery={(newClientName) => set({ newClientName })} />
+            {!b.clientId && b.newClientName && b.newClientName.trim() && <p className="muted small">Saving adds “{b.newClientName.trim()}” as the client.</p>}
           </div>
         )}
 
@@ -166,7 +173,7 @@ export default function NewBooking({ preset = {}, onClose }) {
         )}
         <button type="button" className="btn" onClick={next}>
           {step < STEPS.length - 1 ? (
-            <>{step === 2 && !b.clientId ? 'Skip' : 'Next'} <Icon name="right" size={18} /></>
+            <>{step === 2 && !b.clientId && !(b.newClientName || '').trim() ? 'Skip' : 'Next'} <Icon name="right" size={18} /></>
           ) : (
             <><Icon name="check" size={18} /> Save booking</>
           )}

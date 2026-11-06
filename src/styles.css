@@ -968,3 +968,24 @@ form.inline .num-in { flex: 0 1 92px; }
 .bk-meta span { flex: none; }
 .bk-meta span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sheet .center-link, .view > .center-link { display: block; margin: 10px auto 0; }
+
+/* Stripe */
+.stripe-card { border-color: color-mix(in srgb, #8b7dff 55%, var(--line)); }
+.stripe-card .card-head h2 { color: #b3a9ff; }
+.pay-mark {
+  flex: none; width: 46px; height: 48px; display: grid; place-items: center; border-radius: 12px;
+  background: color-mix(in srgb, #8b7dff 20%, var(--raised)); border: 1.5px solid color-mix(in srgb, #8b7dff 60%, transparent); color: #c9c1ff;
+}
+.stripe-card .row { animation: freshIn 0.55s var(--spring-soft) backwards; }
+.pay-facts { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pay-facts li { display: flex; gap: 10px; font-size: 14px; }
+.pay-facts span { flex: none; width: 52px; color: var(--muted); font-weight: 600; }
+.pay-facts b { font-weight: 600; overflow-wrap: anywhere; }
+.match-row { gap: 8px; padding: 0; }
+.grow-1 { flex: 1; min-width: 0; }
+.match-row .bk-row { border-top: 0; }
+.stripe-line { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, #8b7dff 14%, var(--raised)); font-size: 14px; font-weight: 700; }
+.stripe-line > span { flex: 1; }
+.stripe-line .icon { color: #c9c1ff; }
+.setup-details { margin-top: 10px; }
+.setup-details summary { cursor: pointer; color: var(--muted); font-weight: 700; font-size: 14px; }

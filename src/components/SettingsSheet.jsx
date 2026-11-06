@@ -7,6 +7,7 @@ import {
 } from '../store.js';
 import { toast } from '../lib/toast.js';
 import { useBiz, exportCSV, num, money } from '../lib/biz.js';
+import { StripeSettings } from './Stripe.jsx';
 import { settingsVersions, recentChanges, restoreVersion, settingsSummary, kindName, labelOf, exportBackup } from '../lib/history.js';
 
 export default function SettingsSheet({ onClose }) {
@@ -44,6 +45,8 @@ export default function SettingsSheet({ onClose }) {
       <LookSection />
 
       <BusinessSection />
+
+      <StripeSettings signedIn={!!st.email} />
 
       <HistorySection signedIn={!!st.email} />
 

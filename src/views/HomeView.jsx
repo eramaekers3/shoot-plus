@@ -8,6 +8,7 @@ import { plural } from '../lib/text.js';
 import CardStack from '../components/CardStack.jsx';
 import BookingRow from '../components/BookingRow.jsx';
 import { CountUp, Icon, Ring } from '../components/ui.jsx';
+import { NewPayments } from '../components/Stripe.jsx';
 
 export default function HomeView() {
   const biz = useBiz();
@@ -43,6 +44,7 @@ export default function HomeView() {
       <CardStack
         page="home"
         cards={[
+          { id: 'stripe', title: 'New from Stripe', node: <NewPayments /> },
           { id: 'year', title: 'This year', node: <YearCard biz={biz} year={year} y={y} /> },
           { id: 'soon', title: 'Coming up', node: <Soon biz={biz} list={soon} /> },
           { id: 'recent', title: 'Recent', node: <Recent biz={biz} list={recent} /> },

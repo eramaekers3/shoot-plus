@@ -13,6 +13,7 @@ export const open = (type, id = null, preset = null) => {
 export const openBooking = (id) => open('booking', id);
 export const openClient = (id) => open('client', id);
 export const openService = (id) => open('service', id);
+export const openPayment = (id) => open('stripe', id);
 /** The stepped "new booking" sheet. preset can fill in the service, package or client. */
 export const newBooking = (preset) => open('new', null, preset);
 export const closeSheet = () => {

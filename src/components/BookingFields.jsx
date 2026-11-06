@@ -94,9 +94,13 @@ export function PlaceInput({ biz, value, onChange }) {
 }
 
 /** Type a name: pick an existing client or add a new one. */
-export function ClientPick({ biz, value, onChange, autoFocus }) {
+export function ClientPick({ biz, value, onChange, autoFocus, initialQuery = '', onQuery }) {
   const current = value && biz.clientById[value];
-  const [q, setQ] = useState('');
+  const [q, setQ0] = useState(initialQuery);
+  const setQ = (v) => {
+    setQ0(v);
+    if (onQuery) onQuery(v);
+  };
   const [editing, setEditing] = useState(!current);
   const matches = useMemo(() => {
     const n = norm(q);

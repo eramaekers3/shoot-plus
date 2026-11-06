@@ -4,6 +4,8 @@ import { fmt } from '../lib/dates.js';
 import { useBiz, calc, titleOf, removeWithUndo, money } from '../lib/biz.js';
 import { closeSheet, openClient, newBooking } from '../lib/open.js';
 import { toast } from '../lib/toast.js';
+import { unlink } from '../lib/stripe.js';
+import { openPayment } from '../lib/open.js';
 import { Sheet, Icon } from './ui.jsx';
 import {
   ServicePick, PackagePick, DatePick, PlaceInput, ClientPick, MethodPick, ExpenseList, MoneySummary, MoneyIn, priceFor,
@@ -79,6 +81,14 @@ export default function BookingSheet({ id, onClose }) {
             Use your listed price ({money(priceFor(sv, b.pkg, b.hours))})
           </button>
         )}
+        {b.stripeId && (
+          <div className="stripe-line">
+            <Icon name="card" size={16} />
+            <span>Paid through Stripe</span>
+            <button className="mini" onClick={() => openPayment(b.stripeId)}>Payment</button>
+            <button className="mini" onClick={() => { unlink(b); toast('Stripe payment detached'); }}>Detach</button>
+          </div>
+        )}
         <div className="f">
           Paid with
           <MethodPick methods={s.methods} value={b.method} onChange={(method) => set({ method })} />
@@ -104,7 +114,7 @@ export default function BookingSheet({ id, onClose }) {
       <div className="btn-row edit-sec">
         <button className="btn ghost" onClick={() => {
           const { id: _id, ...rest } = b;
-          newBooking({ ...rest, date: undefined });
+          newBooking({ ...rest, date: undefined, stripeId: undefined });
         }}>
           <Icon name="copy" size={16} /> Duplicate
         </button>
