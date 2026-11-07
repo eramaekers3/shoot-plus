@@ -1,11 +1,15 @@
 import { fmt } from '../lib/dates.js';
-import { money, titleOf, clientName, colorOf, relDate } from '../lib/biz.js';
+import { money, titleOf, clientName, colorOf, relDate, stageOf, dueOf } from '../lib/biz.js';
+import { todayISO } from '../lib/dates.js';
 import { openBooking } from '../lib/open.js';
 
 /** One booking in a list: a date tile in its service color, what it was, who, and what it earned. */
 export default function BookingRow({ biz, b, showYear = false, amount = 'gross' }) {
   const rel = relDate(b.date);
   const who = clientName(biz, b.clientId);
+  const today = todayISO();
+  const editing = !b.cancelled && stageOf(b, today) === 'editing';
+  const late = editing && dueOf(biz, b) < today;
   return (
     <li className={`row bk-row${b.cancelled ? ' cancelled' : ''}`} style={{ '--c': colorOf(biz, b) }}>
       <button className="bk-open" onClick={() => openBooking(b.id)}>
@@ -17,6 +21,7 @@ export default function BookingRow({ biz, b, showYear = false, amount = 'gross' 
           <span className="bk-title">{titleOf(biz, b)}</span>
           <span className="bk-meta">
             {rel && <span className="bk-rel">{rel}</span>}
+            {editing && <span className={late ? 'neg' : 'edit-tag'}>{late ? 'Gallery late' : 'Editing'}</span>}
             {who && <span>{who}</span>}
             {b.location && <span>{b.location}</span>}
             {b.cancelled && <span className="neg">Cancelled</span>}

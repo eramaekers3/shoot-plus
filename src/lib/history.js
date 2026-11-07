@@ -25,12 +25,12 @@ export const recentChanges = () =>
 /** Puts a version back. It syncs to your other devices like any other edit. */
 export const restoreVersion = (v) => put(v.kind, { ...v.data, id: v.record_id || v.id });
 
-const KIND_NAMES = { booking: 'Booking', client: 'Client', service: 'Service', taxpay: 'Tax payment' };
+const KIND_NAMES = { booking: 'Booking', client: 'Client', service: 'Service', taxpay: 'Tax payment', expense: 'Expense', stripe: 'Stripe payment' };
 export const kindName = (k) => KIND_NAMES[k] || k.replace(/[_-]/g, ' ').replace(/^./, (c) => c.toUpperCase());
 export function labelOf(d = {}) {
   if (d.name) return d.name;
   if (d.date && d.price != null) return `${d.title || 'Booking'} · $${d.price} · ${d.date}`;
-  if (d.date && d.amount != null) return `$${d.amount} · ${d.date}`;
+  if (d.date && d.amount != null) return [d.label || d.name || d.what, `$${d.amount}`, d.date].filter(Boolean).join(' · ');
   return d.title || d.date || 'Untitled';
 }
 

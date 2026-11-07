@@ -992,3 +992,27 @@ form.inline .num-in { flex: 0 1 92px; }
 .stripe-card.has-error { border-color: color-mix(in srgb, var(--coral) 55%, var(--line)); }
 .stripe-err { margin: 0 0 8px; }
 .stripe-quiet { margin: 0 0 4px; }
+
+/* Bookings / Business expenses switch */
+.mode-seg { margin-top: 12px; }
+.page-sub { margin: -4px 0 12px; color: var(--muted); font-size: 14px; }
+.center-text { text-align: center; }
+.block { display: block; margin-top: 2px; }
+.guess-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 8px; font-size: 14px; }
+.guess-line i { width: 10px; height: 10px; border-radius: 3px; }
+
+/* Editing queue */
+.queue-card.has-late { border-color: color-mix(in srgb, var(--coral) 45%, var(--line)); }
+.q-row-item { gap: 10px; padding: 0; }
+.q-check {
+  flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; padding: 0;
+  border: 2px solid color-mix(in srgb, var(--c) 70%, var(--line)); background: transparent; color: transparent;
+  transition: transform 0.38s var(--pop), background 0.2s, color 0.2s;
+}
+.q-check:active { transform: scale(0.85); transition: transform 0.08s; }
+@media (hover: hover) { .q-check:hover { color: var(--c); } }
+.due-tag { flex: none; padding: 3px 9px; border-radius: 999px; background: var(--raised); font-size: 12px; font-weight: 800; color: var(--muted); white-space: nowrap; }
+.due-tag.soon { background: color-mix(in srgb, var(--sun) 18%, var(--raised)); color: var(--sun); }
+.due-tag.late { background: color-mix(in srgb, var(--coral) 18%, var(--raised)); color: var(--coral); }
+.due-tag.done { background: color-mix(in srgb, var(--mint) 16%, var(--raised)); color: var(--mint); }
+.edit-tag { color: var(--sun); }

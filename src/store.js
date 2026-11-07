@@ -176,6 +176,7 @@ export const DEFAULT_SETTINGS = {
   taxRate: 25, // % of profit set aside for taxes
   mileRate: 0.7, // $ per mile driven for a shoot, counted as an expense
   yearGoal: 0, // optional income goal for the year
+  turnaround: 7, // days from a shoot to delivering the gallery, unless a service says otherwise
   methods: ['Venmo', 'Cash', 'Zelle', 'Card', 'Check'],
 };
 

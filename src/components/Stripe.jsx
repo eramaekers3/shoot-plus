@@ -3,7 +3,8 @@ import { useRecord, useSyncStatus } from '../store.js';
 import { fmt } from '../lib/dates.js';
 import { plural } from '../lib/text.js';
 import { useBiz, money, num } from '../lib/biz.js';
-import { useStripe, useStripeStatus, syncStripe, presetFrom, linkTo, ignore, ignoreAll, unhide, addAllAsBookings } from '../lib/stripe.js';
+import { useStripe, useStripeStatus, syncStripe, presetFrom, linkTo, ignore, ignoreAll, unhide, addAllAsBookings, guessService, fillServices } from '../lib/stripe.js';
+import { saveSettings, useSettings } from '../store.js';
 import { useMemo, useState } from 'react';
 import { matchesFor } from '../lib/stripe.js';
 import { openPayment, openPayments, newBooking, closeSheet } from '../lib/open.js';
@@ -104,6 +105,7 @@ export function PaymentSheet({ id, onClose }) {
   const matches = useMemo(() => (p ? matchesFor(biz, p) : []), [biz, p]);
   if (!p) return null;
   const linked = p.bookingId && biz.all.find((b) => b.id === p.bookingId);
+  const guess = guessService(biz.services, p);
   return (
     <Sheet title={money(kept(p))} onClose={onClose}>
       <p className="sheet-sub">
@@ -130,6 +132,13 @@ export function PaymentSheet({ id, onClose }) {
         </section>
       ) : (
         <>
+          {guess && (
+            <p className="guess-line">
+              <i style={{ background: biz.serviceById[guess.serviceId].color }} />
+              Looks like <b>{biz.serviceById[guess.serviceId].name}{guess.pkg ? ` — ${guess.pkg}` : ''}</b>
+              <span className="muted small">{guess.why === 'learned' ? ' (from before)' : guess.why === 'price' ? ' (by price)' : ''}</span>
+            </p>
+          )}
           <button className="btn wide" onClick={() => newBooking(presetFrom(p))}>
             <Icon name="plus" size={18} /> Add as a new booking
           </button>
@@ -159,6 +168,24 @@ export function PaymentSheet({ id, onClose }) {
   );
 }
 
+function AutoToggle() {
+  const s = useSettings();
+  const learned = Object.keys(s.stripeMap || {}).length;
+  return (
+    <div className="toggles">
+      <label className="toggle">
+        <span>
+          Add payments as bookings automatically
+          <span className="muted small block">
+            When the service is clear from what they paid for{learned ? ` (it has learned ${plural(learned, 'description')})` : ''}. Payments it can’t place still wait on Home.
+          </span>
+        </span>
+        <input type="checkbox" checked={!!s.stripeAuto} onChange={(e) => saveSettings({ stripeAuto: e.target.checked })} />
+      </label>
+    </div>
+  );
+}
+
 /** Settings → Stripe: whether it's working, a manual check, and how to set it up. */
 export function StripeSettings({ signedIn }) {
   const st = useStripeStatus();
@@ -184,6 +211,7 @@ export function StripeSettings({ signedIn }) {
             {st.lastSync ? ` Checked ${checkedAt(st.lastSync)}.` : ''}
           </p>
           {st.error && <p className="err">{st.error}</p>}
+          <AutoToggle />
           <div className="btn-row">
             <button className="btn ghost" onClick={() => syncStripe(true)} disabled={st.syncing}>{st.syncing ? 'Checking…' : 'Check Stripe now'}</button>
             <button className="btn ghost" onClick={() => syncStripe(true, { everything: true })} disabled={st.syncing}>Get all past payments</button>
@@ -224,6 +252,7 @@ export function PaymentsSheet({ onClose }) {
   const [tab, setTab] = useState(() => (count('new') ? 'new' : count('ignored') ? 'ignored' : 'linked'));
   const [confirm, setConfirm] = useState(false);
   const shown = real.filter((p) => p.status === tab);
+  const missing = biz.all.filter((b) => b.stripeId && !b.serviceId).length;
   const total = shown.reduce((t, p) => t + kept(p), 0);
   return (
     <Sheet title="Stripe payments" onClose={onClose}>
@@ -238,8 +267,14 @@ export function PaymentsSheet({ onClose }) {
         {tab === 'new' && 'Waiting on Home. Payments count toward income once they’re on a booking.'}
         {tab === 'ignored' && 'Hidden payments don’t count toward income. Put them back, or add them as bookings.'}
         {tab === 'linked' && 'Already counted in your income through their bookings.'}
+        {tab === 'linked' && missing > 0 && ` ${plural(missing, 'booking')} from Stripe ${missing === 1 ? 'has' : 'have'} no service yet.`}
         {shown.length > 0 && ` ${money(total)} total.`}
       </p>
+      {tab === 'linked' && missing > 0 && (
+        <div className="btn-row" style={{ marginBottom: 6 }}>
+          <button className="btn" onClick={() => fillServices(biz)}>Fill in services</button>
+        </div>
+      )}
       {shown.length > 0 && tab !== 'linked' && (
         <div className="btn-row" style={{ marginBottom: 6 }}>
           <button

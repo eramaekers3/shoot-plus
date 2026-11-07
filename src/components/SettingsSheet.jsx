@@ -186,6 +186,7 @@ function BusinessSection() {
         {numField('taxRate', 'Tax set-aside %', 'Of each booking’s profit')}
         {numField('mileRate', 'Mileage $/mile', 'Counted as an expense')}
         {numField('yearGoal', 'Income goal this year', s.yearGoal ? money(num(s.yearGoal)) : 'Leave 0 for none')}
+        {numField('turnaround', 'Days to deliver', 'Gallery due date after a shoot; services can override it')}
       </div>
       <p className="muted small" style={{ marginTop: 14 }}>Ways clients pay you</p>
       <div className="chips">

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { todayISO, fmt } from '../lib/dates.js';
 import { useBiz, calc, saveBooking, money, clientFor } from '../lib/biz.js';
-import { markLinked } from '../lib/stripe.js';
+import { markLinked, learn } from '../lib/stripe.js';
 import { haptic } from '../lib/haptics.js';
 import { cheer } from '../lib/cheer.js';
 import { Sheet, Icon } from './ui.jsx';
@@ -49,6 +49,7 @@ export default function NewBooking({ preset = {}, onClose }) {
     const clientId = rest.clientId || (newClientName && newClientName.trim() ? clientFor(biz, newClientName) : '');
     const out = saveBooking({ ...rest, clientId, createdAt: Date.now() });
     markLinked(rest.stripeId, out.id);
+    learn(rest.stripeId, rest.serviceId, rest.pkg);
     haptic('success');
     const fab = document.querySelector('.fab');
     setSaved(out);

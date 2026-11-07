@@ -3,10 +3,13 @@
 //
 // Records (one row each in the `records` table):
 //   booking  { date, time, hours, serviceId, pkg, title, clientId, location, price, tip, method,
-//              expenses: [{ id, cat, label, amount }], miles, notes, cancelled }
+//              expenses: [{ id, cat, label, amount }], miles, notes, cancelled,
+//              due, delivered, gallery }   due: gallery due date (blank = shoot + turnaround); delivered: date sent
 //   client   { name, phone, email, handle, notes }
 //   service  { name, color, kind, unit: 'flat' | 'hour', price, hours, includes, packages: [...], addons: [...], notes, order }
 //   taxpay   { date, amount, note }      money you actually sent in for taxes
+//   expense  { date, cat, label, amount, repeat: '' | 'monthly' | 'yearly', until, notes }
+//            business costs not tied to one shoot (gear, software, insurance…); repeating ones count each time
 
 import { useMemo } from 'react';
 import { useKind, useSettings, put, remove, get } from '../store.js';
@@ -50,6 +53,18 @@ export const EXPENSE_CATS = [
 export const MILEAGE = { id: 'miles', name: 'Mileage', c: '#ff8f7a' };
 export const catOf = (id) => (id === 'miles' ? MILEAGE : EXPENSE_CATS.find((c) => c.id === id) || EXPENSE_CATS.at(-1));
 
+// Business costs that aren't part of one shoot.
+export const OVERHEAD_CATS = [
+  { id: 'gear', name: 'Gear', c: '#7cc4ff' },
+  { id: 'software', name: 'Software & subscriptions', c: '#bba9ff' },
+  { id: 'insurance', name: 'Insurance', c: '#7fdca0' },
+  { id: 'marketing', name: 'Website & marketing', c: '#ff86b8' },
+  { id: 'education', name: 'Education', c: '#ffcf5c' },
+  { id: 'phone', name: 'Phone & internet', c: '#ff9f4a' },
+  { id: 'otherbiz', name: 'Other', c: '#b6b4ad' },
+];
+export const overheadCat = (id) => OVERHEAD_CATS.find((c) => c.id === id) || OVERHEAD_CATS.at(-1);
+
 export const SERVICE_COLORS = ['#ffcf5c', '#ff9f4a', '#ff8f7a', '#ff86b8', '#bba9ff', '#7cc4ff', '#7fdca0', '#e8e4d8'];
 
 /* ---------- One booking ---------- */
@@ -79,6 +94,7 @@ export function useBiz() {
   const clients = useKind('client');
   const services = useKind('service');
   const taxpays = useKind('taxpay');
+  const expenses = useKind('expense');
   return useMemo(() => {
     const clientById = Object.fromEntries(clients.map((c) => [c.id, c]));
     const serviceById = Object.fromEntries(services.map((x) => [x.id, x]));
@@ -92,10 +108,11 @@ export function useBiz() {
       clients: [...clients].sort((a, b) => norm(a.name).localeCompare(norm(b.name))),
       services: [...services].sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || norm(a.name).localeCompare(norm(b.name))),
       taxpays: [...taxpays].sort((a, b) => b.date.localeCompare(a.date)),
+      expenses: [...expenses].sort((a, b) => b.date.localeCompare(a.date)),
       clientById,
       serviceById,
     };
-  }, [s, bookings, clients, services, taxpays]);
+  }, [s, bookings, clients, services, taxpays, expenses]);
 }
 
 export const clientName = (biz, id) => (id && biz.clientById[id] ? biz.clientById[id].name : '');
@@ -185,6 +202,116 @@ export function expensesByCat(list) {
   return [...m.entries()].map(([id, v]) => ({ ...catOf(id), v })).sort((a, b) => b.v - a.v);
 }
 
+/* ---------- Editing and delivery ---------- */
+
+// Shoots before this date count as delivered unless you say otherwise, so years of past bookings
+// don't land in the queue the day it appears.
+export const QUEUE_START = '2026-10-01';
+
+/** Days to deliver a booking's gallery: its service's turnaround, or the one in Settings. */
+export const turnaroundOf = (biz, b) => {
+  const sv = serviceOf(biz, b.serviceId);
+  return num(sv && sv.turnaround) || num(biz.s.turnaround) || 7;
+};
+export const dueOf = (biz, b) => b.due || addDays(b.date, turnaroundOf(biz, b));
+
+/** Where a booking is: 'upcoming', 'editing', or 'delivered'. */
+export function stageOf(b, today = todayISO()) {
+  if (b.delivered) return 'delivered';
+  if (b.date > today) return 'upcoming';
+  if (b.date < QUEUE_START && !b.due) return 'delivered';
+  return 'editing';
+}
+
+/** Shoots waiting to be edited and delivered, soonest due first. */
+export function editQueue(biz) {
+  const today = todayISO();
+  return biz.live
+    .filter((b) => stageOf(b, today) === 'editing')
+    .map((b) => {
+      const due = dueOf(biz, b);
+      const days = Math.round((parse(due) - parse(today)) / 864e5);
+      return { b, due, days };
+    })
+    .sort((a, b) => a.due.localeCompare(b.due));
+}
+
+/** How long delivery has taken, on average, for galleries you marked delivered. */
+export function avgTurnaround(biz) {
+  const list = biz.live.filter((b) => b.delivered && b.delivered >= b.date);
+  if (!list.length) return null;
+  const days = list.reduce((t, b) => t + (parse(b.delivered) - parse(b.date)) / 864e5, 0) / list.length;
+  const onTime = list.filter((b) => b.delivered <= dueOf(biz, b)).length / list.length;
+  return { days, onTime, n: list.length };
+}
+
+/* ---------- Business expenses (overhead) ---------- */
+
+/**
+ * Every time a business expense lands between two dates (inclusive), never past today.
+ * A monthly one repeats on the same day each month (the last day for short months), a yearly one each year.
+ */
+export function occurrences(biz, from = '0000-01-01', to = '9999-12-31') {
+  const today = todayISO();
+  const end = to < today ? to : today;
+  const out = [];
+  for (const e of biz.expenses) {
+    if (!e.date || e.date > end) continue;
+    if (!e.repeat) {
+      if (e.date >= from) out.push({ ...e, on: e.date });
+      continue;
+    }
+    const stop = e.until && e.until < end ? e.until : end;
+    const [y0, m0, d0] = e.date.split('-').map(Number);
+    const step = e.repeat === 'yearly' ? 12 : 1;
+    for (let k = 0; k < 600; k++) {
+      const mi = m0 - 1 + k * step;
+      const y = y0 + Math.floor(mi / 12);
+      const m = (mi % 12) + 1;
+      const last = new Date(y, m, 0).getDate();
+      const on = `${y}-${String(m).padStart(2, '0')}-${String(Math.min(d0, last)).padStart(2, '0')}`;
+      if (on > stop) break;
+      if (on >= from) out.push({ ...e, on });
+    }
+  }
+  return out.sort((a, b) => b.on.localeCompare(a.on));
+}
+
+export const overheadSum = (biz, from, to) => occurrences(biz, from, to).reduce((t, o) => t + num(o.amount), 0);
+
+/**
+ * Totals for a stretch of time, counting business expenses too: profit is after every cost, and the
+ * tax set-aside is your rate on that profit (so gear and software lower it).
+ */
+export function totals(biz, list, from, to) {
+  const t = sum(list);
+  const overhead = overheadSum(biz, from, to);
+  const profit = t.profit - overhead;
+  const tax = Math.max(0, profit) * (num(biz.s.taxRate) / 100);
+  return { ...t, shootProfit: t.profit, overhead, allCosts: t.costs + overhead, profit, tax, keep: profit - tax };
+}
+
+const lastDay = (ym) => `${ym}-${String(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate()).padStart(2, '0')}`;
+export const yearRange = (y) => (y === 'all' ? ['0000-01-01', '9999-12-31'] : [`${y}-01-01`, `${y}-12-31`]);
+
+/** Twelve months for a year, each with business expenses included. */
+export function monthsFull(biz, y) {
+  return Array.from({ length: 12 }, (_, m) => {
+    const ym = `${y}-${String(m + 1).padStart(2, '0')}`;
+    return { ym, m, ...totals(biz, inMonth(biz.live, ym), `${ym}-01`, lastDay(ym)) };
+  });
+}
+
+/** Business expenses in a stretch, by category. */
+export function overheadByCat(biz, from, to) {
+  const m = new Map();
+  for (const o of occurrences(biz, from, to)) m.set(o.cat, (m.get(o.cat) || 0) + num(o.amount));
+  return [...m.entries()].map(([id, v]) => ({ ...overheadCat(id), v })).sort((a, b) => b.v - a.v);
+}
+
+/** What a business expense costs per year (repeating ones multiplied out). */
+export const perYear = (e) => num(e.amount) * (e.repeat === 'monthly' ? 12 : 1);
+
 /* ---------- Taxes ---------- */
 
 // US estimated-tax deadlines for income earned in each part of the year.
@@ -199,10 +326,10 @@ export function quarters(y) {
 
 export function taxYear(biz, y) {
   const list = done(inYear(biz.live, y));
-  const setAside = sum(list).tax;
+  const setAside = totals(biz, list, `${y}-01-01`, `${y}-12-31`).tax;
   // A payment counts toward the year it's for (January's Q4 payment is last year's), else its own year.
   const paid = biz.taxpays.filter((t) => +(t.forYear || t.date.slice(0, 4)) === +y).reduce((a, t) => a + num(t.amount), 0);
-  const qs = quarters(+y).map((q) => ({ ...q, tax: sum(list.filter((b) => b.date >= q.from && b.date <= q.to)).tax }));
+  const qs = quarters(+y).map((q) => ({ ...q, tax: totals(biz, list.filter((b) => b.date >= q.from && b.date <= q.to), q.from, q.to).tax }));
   const today = todayISO();
   const next = qs.find((q) => q.due >= today && q.from <= today) || qs.find((q) => q.due >= today) || null;
   return { setAside, paid, owed: Math.max(0, setAside - paid), quarters: qs, next };

@@ -103,6 +103,9 @@ export async function syncStripe(force = false, { days, everything } = {}) {
       }
     }
     if (items.length) putMany(items);
+    // With auto-add on, payments whose service is known become bookings right away.
+    const auto = (get(SETTINGS_ID) || {}).stripeAuto ? autoAdd(items.filter(([, d]) => d.status === 'new').map(([, d]) => d)) : 0;
+    fresh -= auto;
     const now = Date.now();
     try {
       localStorage.setItem(LAST, String(now));
@@ -115,7 +118,9 @@ export async function syncStripe(force = false, { days, everything } = {}) {
       const n = (body.charges || []).length;
       const back = body.oldest ? ` (back to ${new Date(body.oldest * 1000).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })})` : '';
       toast(
-        fresh
+        auto
+          ? `${auto} booking${auto === 1 ? '' : 's'} added from Stripe${fresh ? `, ${fresh} to sort` : ''}${back}`
+          : fresh
           ? `${fresh} new Stripe payment${fresh === 1 ? '' : 's'}${back}`
           : n
             ? `Stripe sent ${n} payment${n === 1 ? '' : 's'}${back}, all already here`
@@ -154,10 +159,80 @@ function ensureMethod() {
 
 const feeLine = (p) => (p.fee ? [{ id: newId(), cat: 'fees', label: 'Stripe fee', amount: p.fee }] : []);
 
+/* ---------- Which service a payment was for ---------- */
+
+// What a payment's description is remembered under: "Senior Photos – Classic (x1)" → "senior photos classic".
+const keyOf = (what) => norm(what).replace(/\(x\d+\)/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+const words = (t) => keyOf(t).split(' ').filter((w) => w.length > 1);
+
+/**
+ * Best guess at the service (and package) a payment was for, or null.
+ *   1. what you picked before for a payment with the same description (learned)
+ *   2. the description names one of your services or packages
+ *   3. the amount is exactly one package's or service's price (only when just one matches)
+ * `sure` is false for a price-only match, so auto-add leaves those for you to check.
+ */
+export function guessService(services, p) {
+  const learned = ((get(SETTINGS_ID) || {}).stripeMap || {})[keyOf(p.what)];
+  if (learned && services.some((s) => s.id === learned.serviceId)) return { ...learned, sure: true, why: 'learned' };
+  const what = words(p.what);
+  if (what.length) {
+    let best = null;
+    for (const s of services) {
+      const sw = words(s.name);
+      const hits = sw.filter((w) => what.includes(w) || what.includes(w.replace(/s$/, ''))).length;
+      if (!hits || hits < Math.min(sw.length, 2)) continue;
+      const pkg = (s.packages || []).find((pk) => pk.name && words(pk.name).every((w) => what.includes(w)));
+      const score = hits / sw.length + (pkg ? 1 : 0);
+      if (!best || score > best.score) best = { score, serviceId: s.id, pkg: pkg ? pkg.name : '', hours: pkg ? pkg.hours : s.hours };
+    }
+    if (best) return { serviceId: best.serviceId, pkg: best.pkg, hours: best.hours, sure: true, why: 'name' };
+  }
+  const amount = kept(p);
+  let hits = [];
+  for (const s of services) {
+    // One hit per service: a matching package beats the service's own price.
+    const pk = (s.packages || []).filter((x) => Math.abs(num(x.price) - amount) < 0.01);
+    if (pk.length === 1) hits.push({ serviceId: s.id, pkg: pk[0].name, hours: pk[0].hours });
+    else if (pk.length > 1 || (s.unit !== 'hour' && Math.abs(num(s.price) - amount) < 0.01)) hits.push({ serviceId: s.id, pkg: '', hours: s.hours });
+  }
+  // A price shared by several services: a partial name match ("Senior session") picks between them.
+  if (hits.length > 1 && what.length) {
+    const named = hits.filter((h) => words(services.find((s) => s.id === h.serviceId).name).some((w) => what.includes(w)));
+    if (named.length === 1) return { ...named[0], sure: true, why: 'name' };
+  }
+  return hits.length === 1 ? { ...hits[0], sure: false, why: 'price' } : null;
+}
+
+/** Remembers which service a payment description goes with, so the next one fills itself in. */
+export function learn(stripeId, serviceId, pkg = '') {
+  const p = stripeId && get(stripeId);
+  if (!p || !p.what || !serviceId) return;
+  const map = { ...((get(SETTINGS_ID) || {}).stripeMap || {}) };
+  const k = keyOf(p.what);
+  if (map[k] && map[k].serviceId === serviceId && map[k].pkg === pkg) return;
+  map[k] = { serviceId, pkg };
+  saveSettings({ stripeMap: map });
+}
+
+/** Turns payments into bookings when their service is known for sure. Returns how many. */
+function autoAdd(ps) {
+  const services = list('service');
+  const biz = { clients: list('client') };
+  const ok = ps.filter((p) => {
+    const g = guessService(services, p);
+    return g && g.sure;
+  });
+  if (ok.length) addAllAsBookings(biz, ok, { quiet: true, services });
+  return ok.length;
+}
+
 /** What a new booking made from this payment starts with. */
-export function presetFrom(p) {
+export function presetFrom(p, services = list('service')) {
   ensureMethod();
+  const g = guessService(services, p);
   return {
+    ...(g ? { serviceId: g.serviceId, pkg: g.pkg, hours: g.hours ?? '' } : {}),
     price: kept(p),
     date: p.date,
     method: 'Stripe',
@@ -198,18 +273,47 @@ export function unhide(ps) {
 }
 
 /** Turns payments straight into bookings (price, date, payer as client, Stripe fee as an expense). */
-export function addAllAsBookings(biz, ps) {
+export function addAllAsBookings(biz, ps, { quiet = false, services = list('service') } = {}) {
+  let named = 0;
+  // Payers seen earlier in this batch, so two payments from the same person make one client.
+  const made_clients = new Map();
+  const clientOf = (name) => {
+    const k = norm(name);
+    if (!k) return '';
+    if (!made_clients.has(k)) made_clients.set(k, clientFor(biz, name));
+    return made_clients.get(k);
+  };
   const made = ps.map((p) => {
-    const { newClientName, stripeId, ...preset } = presetFrom(p);
+    const { newClientName, stripeId, ...preset } = presetFrom(p, services);
+    if (preset.serviceId) named++;
     const b = saveBooking({
-      serviceId: '', pkg: '', title: p.what || '', time: '', hours: '', location: '', tip: '', miles: '',
-      ...preset, clientId: newClientName ? clientFor(biz, newClientName) : '', stripeId, createdAt: Date.now(),
+      serviceId: '', pkg: '', title: preset.serviceId ? '' : p.what || '', time: '', hours: '', location: '', tip: '', miles: '',
+      ...preset, clientId: clientOf(newClientName), stripeId, createdAt: Date.now(),
     });
     patch(p.id, { status: 'linked', bookingId: b.id });
     return b;
   });
-  toast(`${made.length} booking${made.length === 1 ? '' : 's'} added from Stripe`);
+  if (!quiet) {
+    const n = made.length;
+    toast(`${n} booking${n === 1 ? '' : 's'} added from Stripe${named < n ? ` — ${n - named} need${n - named === 1 ? 's' : ''} a service` : ''}`);
+  }
   return made;
+}
+
+/** Stripe bookings with no service yet: fills in the ones it can work out. Returns how many it filled. */
+export function fillServices(biz) {
+  let n = 0;
+  for (const b of biz.all) {
+    if (!b.stripeId || b.serviceId) continue;
+    const p = get(b.stripeId);
+    const g = p && guessService(biz.services, p);
+    if (!g) continue;
+    const { $: _m, ...rest } = b;
+    put('booking', { ...rest, serviceId: g.serviceId, pkg: g.pkg, hours: rest.hours || g.hours || '', title: rest.title === p.what ? '' : rest.title, updatedAt: Date.now() });
+    n++;
+  }
+  toast(n ? `Filled in the service on ${n} booking${n === 1 ? '' : 's'}` : 'Couldn’t work out any more services. Pick them on each booking and it’ll learn.');
+  return n;
 }
 
 /** Takes a payment off a booking (the booking stays; the payment goes back to New). */

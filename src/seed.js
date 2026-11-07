@@ -114,6 +114,15 @@ export function seed() {
     }]);
   }
 
+  // Business expenses: a lens, subscriptions and insurance.
+  [
+    { key: 'lens', date: addDays(today, -200), cat: 'gear', label: 'Sigma 24-70 f/2.8 DG DN Art II', amount: 1299, repeat: '' },
+    { key: 'cards', date: addDays(today, -90), cat: 'gear', label: 'Memory cards', amount: 64, repeat: '' },
+    { key: 'adobe', date: addDays(today, -500), cat: 'software', label: 'Adobe Photography plan', amount: 19.99, repeat: 'monthly' },
+    { key: 'pixieset', date: addDays(today, -400), cat: 'software', label: 'Gallery hosting', amount: 8, repeat: 'monthly' },
+    { key: 'ins', date: addDays(today, -300), cat: 'insurance', label: 'Gear insurance', amount: 240, repeat: 'yearly' },
+  ].forEach(({ key, ...e }) => items.push(['expense', { ...e, id: idFor(`sample-expense-${key}`), until: '', notes: '', sample: true }]));
+
   // Estimated tax payments sent in this year.
   const y = +today.slice(0, 4);
   [[`${y}-04-14`, 310], [`${y}-06-13`, 280], [`${y}-09-12`, 340]].forEach(([date, amount], i) => {

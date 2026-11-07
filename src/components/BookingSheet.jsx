@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { put, useRecord } from '../store.js';
-import { fmt } from '../lib/dates.js';
-import { useBiz, calc, titleOf, removeWithUndo, money } from '../lib/biz.js';
+import { useBiz, calc, titleOf, removeWithUndo, money, dueOf, stageOf, turnaroundOf } from '../lib/biz.js';
+import { deliver, dueLabel } from './Queue.jsx';
+import { fmt, todayISO, parse } from '../lib/dates.js';
 import { closeSheet, openClient, newBooking } from '../lib/open.js';
 import { toast } from '../lib/toast.js';
-import { unlink } from '../lib/stripe.js';
+import { unlink, learn } from '../lib/stripe.js';
 import { openPayment } from '../lib/open.js';
 import { Sheet, Icon } from './ui.jsx';
 import {
@@ -29,8 +30,8 @@ export default function BookingSheet({ id, onClose }) {
 
       <section className="bs-sec">
         <h3 className="sub-h">Service</h3>
-        <ServicePick biz={biz} value={b.serviceId} onPick={(serviceId) => set({ serviceId, pkg: '' })} />
-        <PackagePick s={sv} value={b.pkg} onPick={(p) => set(p ? { pkg: p.name, price: p.price, hours: p.hours || b.hours } : { pkg: '' })} />
+        <ServicePick biz={biz} value={b.serviceId} onPick={(serviceId) => { set({ serviceId, pkg: '' }); learn(b.stripeId, serviceId); }} />
+        <PackagePick s={sv} value={b.pkg} onPick={(p) => { set(p ? { pkg: p.name, ...(b.stripeId ? {} : { price: p.price }), hours: p.hours || b.hours } : { pkg: '' }); learn(b.stripeId, b.serviceId, p ? p.name : ''); }} />
         <label className="f">
           Title <span className="muted-n">(optional — shown instead of the service name)</span>
           <input className="input" placeholder={sv ? sv.name : 'Booking'} value={b.title || ''} onChange={(e) => set({ title: e.target.value })} />
@@ -104,6 +105,8 @@ export default function BookingSheet({ id, onClose }) {
         <ExpenseList value={b.expenses || []} onChange={(expenses) => set({ expenses })} />
       </section>
 
+      <Delivery biz={biz} b={b} set={set} />
+
       <section className="bs-sec">
         <label className="f">
           Notes
@@ -133,5 +136,43 @@ export default function BookingSheet({ id, onClose }) {
         </button>
       </div>
     </Sheet>
+  );
+}
+
+/** Editing and delivery: due date, gallery link, and whether it's been delivered. */
+function Delivery({ biz, b, set }) {
+  const today = todayISO();
+  const stage = stageOf(b, today);
+  const due = dueOf(biz, b);
+  const days = Math.round((parse(due) - parse(today)) / 864e5);
+  if (b.cancelled) return null;
+  return (
+    <section className="bs-sec">
+      <div className="sub-head">
+        <h3 className="sub-h">Gallery</h3>
+        <span className={`due-tag${stage === 'delivered' ? ' done' : stage === 'editing' && days < 0 ? ' late' : ''}`}>
+          {stage === 'delivered' ? (b.delivered ? `Delivered ${fmt(b.delivered, { month: 'short', day: 'numeric' })}` : 'Delivered') : stage === 'upcoming' ? `Due ${fmt(due, { month: 'short', day: 'numeric' })}` : dueLabel(days)}
+        </span>
+      </div>
+      <div className="form-grid">
+        <label className="f">
+          Due
+          <input className="input" type="date" value={b.due || ''} placeholder={due} onChange={(e) => set({ due: e.target.value })} />
+          <span className="f-hint">{b.due ? 'Set by you' : `${fmt(due, { month: 'short', day: 'numeric' })} · ${turnaroundOf(biz, b)} days after the shoot`}</span>
+        </label>
+        <label className="f">
+          Delivered on
+          <input className="input" type="date" value={b.delivered || ''} onChange={(e) => set({ delivered: e.target.value })} />
+        </label>
+        <label className="f full">
+          Gallery link
+          <input className="input" type="url" inputMode="url" placeholder="https://…" value={b.gallery || ''} onChange={(e) => set({ gallery: e.target.value })} />
+        </label>
+      </div>
+      <div className="btn-row">
+        {stage === 'editing' && <button className="btn" onClick={(e) => deliver(b, e.currentTarget)}>Mark delivered</button>}
+        {b.gallery && /^https?:\/\//.test(b.gallery) && <a className="mini" href={b.gallery} target="_blank" rel="noreferrer">Open gallery ↗</a>}
+      </div>
+    </section>
   );
 }

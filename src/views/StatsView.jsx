@@ -3,10 +3,12 @@ import { fmt, todayISO, parse, addDays } from '../lib/dates.js';
 import { plural } from '../lib/text.js';
 import { put } from '../store.js';
 import {
-  useBiz, sum, inYear, done, byMonth, cumulative, groupBy, expensesByCat, taxYear, years, money, num,
+  useBiz, sum, inYear, done, cumulative, groupBy, expensesByCat, taxYear, years, money, num,
+  totals, monthsFull, overheadByCat, yearRange, avgTurnaround,
   clientName, thisYear, removeWithUndo, titleOf,
 } from '../lib/biz.js';
-import { openBooking, openClient } from '../lib/open.js';
+import { openBooking, openClient, goTab } from '../lib/open.js';
+import { setMode } from '../lib/mode.js';
 import { toast } from '../lib/toast.js';
 import CardStack from '../components/CardStack.jsx';
 import BookingRow from '../components/BookingRow.jsx';
@@ -19,7 +21,10 @@ export default function StatsView() {
   const [y, setY] = useState(thisYear());
   const today = todayISO();
   const list = useMemo(() => done(inYear(biz.live, y)), [biz, y]);
-  const t = useMemo(() => sum(list), [list]);
+  const t = useMemo(() => {
+    const [from, to] = yearRange(y);
+    return totals(biz, list, from, to);
+  }, [biz, list, y]);
 
   // The same stretch of last year, for a fair comparison (Jan 1 → today's date).
   const prevSame = useMemo(() => {
@@ -52,7 +57,7 @@ export default function StatsView() {
           { id: 'pace', title: 'Compared with last year', node: y === 'all' ? null : <Pace biz={biz} y={y} /> },
           { id: 'services', title: 'By service', node: <Services biz={biz} list={list} /> },
           { id: 'clients', title: 'Clients', node: <Clients biz={biz} list={list} y={y} /> },
-          { id: 'expenses', title: 'Expenses', node: <Expenses list={list} t={t} s={biz.s} /> },
+          { id: 'expenses', title: 'Expenses', node: <Expenses biz={biz} list={list} t={t} y={y} /> },
           { id: 'when', title: 'When & where', node: <WhenWhere list={list} /> },
           { id: 'paid', title: 'Paid with', node: <PaidWith list={list} /> },
           { id: 'tax', title: 'Taxes', node: <Taxes biz={biz} y={y === 'all' ? thisYear() : y} /> },
@@ -88,7 +93,7 @@ function Overview({ t, prev, y }) {
       </div>
       <div className="tiles tiles-3">
         <div className="tile"><span>Profit</span><b>{money(t.profit)}</b></div>
-        <div className="tile"><span>Expenses</span><b>{money(t.costs)}</b></div>
+        <div className="tile"><span>All expenses</span><b>{money(t.allCosts)}</b></div>
         <div className="tile"><span>After tax</span><b className="pos">{money(t.keep)}</b></div>
         <div className="tile"><span>Avg booking</span><b>{money(Math.round(t.avg))}</b></div>
         <div className="tile"><span>Per hour shooting</span><b>{t.hours ? money(Math.round(t.gross / t.hours)) : '—'}</b></div>
@@ -106,9 +111,9 @@ function Months({ biz, y }) {
   const today = todayISO();
   const data = useMemo(() => {
     if (y === 'all') {
-      return years(biz).slice().reverse().map((yr) => ({ ym: String(yr), label: `’${String(yr).slice(2)}`, ...sum(done(inYear(biz.live, yr))) }));
+      return years(biz).slice().reverse().map((yr) => ({ ym: String(yr), label: `’${String(yr).slice(2)}`, ...totals(biz, done(inYear(biz.live, yr)), ...yearRange(yr)) }));
     }
-    return byMonth(biz.live, y);
+    return monthsFull(biz, y);
   }, [biz, y]);
   const p = data.find((m) => m.ym === picked);
   const pickedList = p ? biz.live.filter((b) => b.date.startsWith(p.ym)) : [];
@@ -222,22 +227,34 @@ function Clients({ biz, list, y }) {
 
 /* ---------- Expenses ---------- */
 
-function Expenses({ list, t, s }) {
-  const cats = expensesByCat(list);
+function Expenses({ biz, list, t, y }) {
+  const shoot = expensesByCat(list);
+  const biz2 = overheadByCat(biz, ...yearRange(y));
+  const rows = [
+    ...biz2.map((c) => ({ key: `o-${c.id}`, label: c.name, c: c.c, v: c.v })),
+    ...shoot.map((c) => ({ key: `s-${c.id}`, label: c.name, c: c.c, v: c.v })),
+  ].sort((a, b) => b.v - a.v);
+  const s = biz.s;
   return (
     <section className="card" aria-labelledby="ex-h">
-      <div className="card-head"><h2 id="ex-h">Expenses</h2><span className="meta">{money(t.costs)}</span></div>
-      {cats.length ? (
+      <div className="card-head"><h2 id="ex-h">Expenses</h2><span className="meta">{money(t.allCosts)}</span></div>
+      {rows.length ? (
         <>
-          <SplitBar parts={cats.map((c) => ({ key: c.id, v: c.v, c: c.c }))} />
-          <BarRows rows={cats.map((c) => ({ key: c.id, label: c.name, c: c.c, v: c.v }))} format={money} />
+          <div className="tiles tiles-3">
+            <div className="tile"><span>Business</span><b>{money(t.overhead)}</b></div>
+            <div className="tile"><span>On shoots</span><b>{money(t.costs)}</b></div>
+            <div className="tile"><span>Of income</span><b>{t.gross ? Math.round((t.allCosts / t.gross) * 100) : 0}%</b></div>
+          </div>
+          <SplitBar parts={rows.map((r) => ({ key: r.key, v: r.v, c: r.c }))} />
+          <BarRows rows={rows} format={money} />
           <p className="muted small">
-            {Math.round(t.miles)} miles driven, counted at {money(s.mileRate)}/mile. Expenses took {t.gross ? Math.round((t.costs / t.gross) * 100) : 0}% of income.
+            Business expenses are gear, software and other costs not tied to one shoot. {t.miles ? `${Math.round(t.miles)} miles driven, counted at ${money(s.mileRate)}/mile.` : ''}
           </p>
         </>
       ) : (
-        <p className="empty">No expenses logged. Add gear rentals, a second shooter or miles driven on any booking.</p>
+        <p className="empty">No expenses logged. Add gear and software as business expenses, and rentals or miles on each booking.</p>
       )}
+      <button className="link-btn" onClick={() => { setMode('expenses'); goTab('bookings'); }}>Business expenses →</button>
     </section>
   );
 }
@@ -353,6 +370,7 @@ function Taxes({ biz, y }) {
 /* ---------- Records ---------- */
 
 function Records({ biz }) {
+  const turn = avgTurnaround(biz);
   const list = done(biz.live);
   if (!list.length) return <Empty id="rc" title="Records" />;
   const biggest = [...list].sort((a, b) => b.$.gross - a.$.gross)[0];
@@ -378,6 +396,7 @@ function Records({ biz }) {
         <li><span>Best month</span><b>{money(bestMonth.gross)} · {fmt(`${bestMonth.key}-01`, { month: 'long', year: 'numeric' })}</b></li>
         <li><span>Best year</span><b>{money(ys[0].gross)} · {ys[0].key}</b></li>
         <li><span>Longest streak</span><b>{plural(best, 'week')} in a row with a shoot</b></li>
+        {turn && <li><span>Delivery</span><b>{Math.round(turn.days * 10) / 10} days on average · {Math.round(turn.onTime * 100)}% on time ({`${turn.n} ${turn.n === 1 ? 'gallery' : 'galleries'}`})</b></li>}
         <li><span>All-time income</span><b>{money(sum(list).gross)} from {plural(list.length, 'booking')}</b></li>
       </ul>
     </section>

@@ -5,8 +5,27 @@ import { useBiz, sum, money, years, clientName, titleOf } from '../lib/biz.js';
 import BookingRow from '../components/BookingRow.jsx';
 import { Icon } from '../components/ui.jsx';
 import { newBooking } from '../lib/open.js';
+import { useMode, setMode } from '../lib/mode.js';
+import ExpensesView from './ExpensesView.jsx';
 
+/** The Bookings tab: your bookings, or (switch at the top) business expenses. Reopens on the one you left. */
 export default function BookingsView() {
+  const mode = useMode();
+  return (
+    <>
+      <header className="page-head">
+        <h1>{mode === 'expenses' ? 'Expenses' : 'Bookings'}</h1>
+        <div className="seg mode-seg" role="group" aria-label="Show">
+          <button aria-pressed={mode !== 'expenses'} onClick={() => setMode('bookings')}>Bookings</button>
+          <button aria-pressed={mode === 'expenses'} onClick={() => setMode('expenses')}>Business expenses</button>
+        </div>
+      </header>
+      {mode === 'expenses' ? <ExpensesView key="e" /> : <BookingsList key="b" />}
+    </>
+  );
+}
+
+function BookingsList() {
   const biz = useBiz();
   const [q, setQ] = useState('');
   const [year, setYear] = useState('all');
@@ -42,10 +61,7 @@ export default function BookingsView() {
 
   return (
     <>
-      <header className="page-head">
-        <h1>Bookings</h1>
-        <p>{plural(total.n, 'booking')} · {money(total.gross)} · {money(total.profit)} profit</p>
-      </header>
+      <p className="page-sub">{plural(total.n, 'booking')} · {money(total.gross)} · {money(total.profit)} profit before business expenses</p>
 
       <div className="filters">
         <label className="search">

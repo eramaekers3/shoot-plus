@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { fmt, todayISO, parse } from '../lib/dates.js';
 import {
-  useBiz, sum, inMonth, inYear, done, ahead, money, thisMonth, prevMonth, thisYear, taxYear,
+  useBiz, sum, totals, inMonth, inYear, done, ahead, money, thisMonth, prevMonth, thisYear, taxYear,
 } from '../lib/biz.js';
 import { goTab, newBooking } from '../lib/open.js';
 import { plural } from '../lib/text.js';
@@ -9,6 +9,7 @@ import CardStack from '../components/CardStack.jsx';
 import BookingRow from '../components/BookingRow.jsx';
 import { CountUp, Icon, Ring } from '../components/ui.jsx';
 import { NewPayments } from '../components/Stripe.jsx';
+import { EditQueue } from '../components/Queue.jsx';
 
 export default function HomeView() {
   const biz = useBiz();
@@ -17,7 +18,7 @@ export default function HomeView() {
   const y = thisYear();
   const month = useMemo(() => sum(done(inMonth(biz.live, ym))), [biz, ym]);
   const last = useMemo(() => sum(inMonth(biz.live, prevMonth(ym))), [biz, ym]);
-  const year = useMemo(() => sum(done(inYear(biz.live, y))), [biz, y]);
+  const year = useMemo(() => totals(biz, done(inYear(biz.live, y)), `${y}-01-01`, todayISO()), [biz, y]);
   const soon = useMemo(() => ahead(biz.live), [biz]);
   const recent = useMemo(() => done(biz.live).slice(0, 5), [biz]);
   const tax = useMemo(() => taxYear(biz, y), [biz, y]);
@@ -45,6 +46,7 @@ export default function HomeView() {
         page="home"
         cards={[
           { id: 'stripe', title: 'New from Stripe', node: <NewPayments /> },
+          { id: 'queue', title: 'To edit', node: <EditQueue /> },
           { id: 'year', title: 'This year', node: <YearCard biz={biz} year={year} y={y} /> },
           { id: 'soon', title: 'Coming up', node: <Soon biz={biz} list={soon} /> },
           { id: 'recent', title: 'Recent', node: <Recent biz={biz} list={recent} /> },

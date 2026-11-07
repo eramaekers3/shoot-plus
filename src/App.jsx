@@ -4,7 +4,7 @@ import { Icon, Toaster, LogoMark } from './components/ui.jsx';
 import { DEFAULT_LOGO } from './lib/logo.js';
 import { useTheme, useLogoIcon } from './lib/theme.js';
 import { useSwipe } from './lib/swipe.js';
-import { useOpenSheet, closeSheet, newBooking } from './lib/open.js';
+import { useOpenSheet, closeSheet, newBooking, open } from './lib/open.js';
 import HomeView from './views/HomeView.jsx';
 import BookingsView from './views/BookingsView.jsx';
 import StatsView from './views/StatsView.jsx';
@@ -14,6 +14,8 @@ import NewBooking from './components/NewBooking.jsx';
 import BookingSheet from './components/BookingSheet.jsx';
 import ClientSheet from './components/ClientSheet.jsx';
 import ServiceSheet from './components/ServiceSheet.jsx';
+import ExpenseSheet from './components/ExpenseSheet.jsx';
+import { useMode } from './lib/mode.js';
 import { PaymentSheet, PaymentsSheet } from './components/Stripe.jsx';
 import { useStripeSync } from './lib/stripe.js';
 
@@ -43,6 +45,8 @@ export default function App() {
   const s = useSettings();
   const sync = useSyncStatus();
   const sheet = useOpenSheet();
+  const mode = useMode();
+  const addingExpense = tab === 'bookings' && mode === 'expenses';
   useTheme();
   useLogoIcon();
   useStripeSync();
@@ -140,7 +144,7 @@ export default function App() {
         </main>
       </div>
 
-      <button className="fab" onClick={() => newBooking()} aria-label="Add a booking">
+      <button className="fab" onClick={() => (addingExpense ? open('expense', null) : newBooking())} aria-label={addingExpense ? 'Add an expense' : 'Add a booking'}>
         <Icon name="plus" size={28} />
       </button>
 
@@ -158,6 +162,7 @@ export default function App() {
       {sheet && sheet.type === 'client' && <ClientSheet key={sheet.key} id={sheet.id} onClose={closeSheet} />}
       {sheet && sheet.type === 'payments' && <PaymentsSheet key={sheet.key} onClose={closeSheet} />}
       {sheet && sheet.type === 'stripe' && <PaymentSheet key={sheet.key} id={sheet.id} onClose={closeSheet} />}
+      {sheet && sheet.type === 'expense' && <ExpenseSheet key={sheet.key} id={sheet.id} onClose={closeSheet} />}
       {sheet && sheet.type === 'service' && <ServiceSheet key={sheet.key} id={sheet.id} onClose={closeSheet} />}
       <Suspense fallback={null}>{settings && <SettingsSheet onClose={() => setSettings(false)} />}</Suspense>
       <Toaster />

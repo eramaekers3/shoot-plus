@@ -4,8 +4,11 @@ The income tracker for your photo and video business, built in the same style as
 (same dark grainy look, springy motion, haptics, accent color, logo color and heading font choices).
 Installed from Safari to the Home Screen, like lifestyle+.
 
-- **Home** — what you've earned this month, the year so far against your goal, coming-up shoots, recent bookings and taxes.
-- **Bookings** — every booking ever, grouped by month, with search and year/service filters. Tap one to edit anything about it.
+- **Home** — what you've earned this month, new Stripe payments, galleries still to edit (with due dates), the year so far
+  against your goal, coming-up shoots, recent bookings and taxes.
+- **Bookings** — every booking ever, grouped by month, with search and year/service filters. Tap one to edit anything about it,
+  including its gallery due date, link and when you delivered it. Switch to **Business expenses** for gear, software,
+  insurance and other costs not tied to one shoot (one-time, monthly or yearly); they lower profit and the tax set-aside.
 - **Stats** — by month, against last year, by service, top and repeat clients, expenses, weekdays and locations, payment methods, quarterly taxes and records. Pick any year or all time.
 - **Clients** — everyone you've shot, what they've paid, contact info and their bookings.
 - **Pricing** — your services with packages and add-ons, plus a quick quote calculator.
@@ -48,7 +51,10 @@ refund or move money. The key stays on the server (`api/stripe.js`); the app nev
    - `STRIPE_SECRET_KEY` — the `rk_live_…` key
    - `STRIPE_OWNER_EMAIL` — the email you sign in to shoot+ with (only that account can read your payments,
      since anyone can make an account in the shared Supabase project)
-3. Redeploy, then open **Settings → Stripe → Check Stripe now**. The first check pulls in the last 90 days;
+3. Redeploy, then open **Settings → Stripe → Check Stripe now**. A payment's service is worked out from what was
+   paid for (your service and package names), what you picked before for the same description, or an exact price.
+   Turn on **Add payments as bookings automatically** to skip the New list when the service is clear.
+    The first check pulls in the last 90 days;
    after that it checks when you open the app (at most every 20 minutes). **Hide all** clears ones you've
    already logged by hand.
 
