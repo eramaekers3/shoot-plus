@@ -14,7 +14,7 @@ import NewBooking from './components/NewBooking.jsx';
 import BookingSheet from './components/BookingSheet.jsx';
 import ClientSheet from './components/ClientSheet.jsx';
 import ServiceSheet from './components/ServiceSheet.jsx';
-import { PaymentSheet } from './components/Stripe.jsx';
+import { PaymentSheet, PaymentsSheet } from './components/Stripe.jsx';
 import { useStripeSync } from './lib/stripe.js';
 
 // Settings opens now and then, so it loads separately (fetched in the background after start-up).
@@ -156,6 +156,7 @@ export default function App() {
       {sheet && sheet.type === 'new' && <NewBooking key={sheet.key} preset={sheet.preset} onClose={closeSheet} />}
       {sheet && sheet.type === 'booking' && <BookingSheet key={sheet.key} id={sheet.id} onClose={closeSheet} />}
       {sheet && sheet.type === 'client' && <ClientSheet key={sheet.key} id={sheet.id} onClose={closeSheet} />}
+      {sheet && sheet.type === 'payments' && <PaymentsSheet key={sheet.key} onClose={closeSheet} />}
       {sheet && sheet.type === 'stripe' && <PaymentSheet key={sheet.key} id={sheet.id} onClose={closeSheet} />}
       {sheet && sheet.type === 'service' && <ServiceSheet key={sheet.key} id={sheet.id} onClose={closeSheet} />}
       <Suspense fallback={null}>{settings && <SettingsSheet onClose={() => setSettings(false)} />}</Suspense>

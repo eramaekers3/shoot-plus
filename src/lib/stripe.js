@@ -12,7 +12,7 @@ import { idFor, newId } from './ids.js';
 import { iso, parse, todayISO } from './dates.js';
 import { norm } from './text.js';
 import { toast } from './toast.js';
-import { num } from './biz.js';
+import { num, saveBooking, clientFor } from './biz.js';
 
 const LAST = 'shootplus.stripeChecked';
 const RESULT = 'shootplus.stripeResult'; // what the last check found, so it survives closing the app
@@ -180,6 +180,26 @@ export function ignore(p) {
 export function ignoreAll(ps) {
   ps.forEach((p) => patch(p.id, { status: 'ignored' }));
   toast(`${ps.length} payments hidden`, { label: 'Undo', run: () => ps.forEach((p) => patch(p.id, { status: 'new' })) });
+}
+
+export function unhide(ps) {
+  ps.forEach((p) => patch(p.id, { status: 'new' }));
+  toast(ps.length === 1 ? 'Payment back on Home' : `${ps.length} payments back on Home`);
+}
+
+/** Turns payments straight into bookings (price, date, payer as client, Stripe fee as an expense). */
+export function addAllAsBookings(biz, ps) {
+  const made = ps.map((p) => {
+    const { newClientName, stripeId, ...preset } = presetFrom(p);
+    const b = saveBooking({
+      serviceId: '', pkg: '', title: p.what || '', time: '', hours: '', location: '', tip: '', miles: '',
+      ...preset, clientId: newClientName ? clientFor(biz, newClientName) : '', stripeId, createdAt: Date.now(),
+    });
+    patch(p.id, { status: 'linked', bookingId: b.id });
+    return b;
+  });
+  toast(`${made.length} booking${made.length === 1 ? '' : 's'} added from Stripe`);
+  return made;
 }
 
 /** Takes a payment off a booking (the booking stays; the payment goes back to New). */

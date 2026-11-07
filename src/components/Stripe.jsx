@@ -1,16 +1,22 @@
 // Stripe payments in the app: the "New payments" card on Home and the sheet for one payment.
-import { useMemo } from 'react';
 import { useRecord, useSyncStatus } from '../store.js';
 import { fmt } from '../lib/dates.js';
 import { plural } from '../lib/text.js';
 import { useBiz, money, num } from '../lib/biz.js';
-import { useStripe, useStripeStatus, syncStripe, presetFrom, linkTo, ignore, ignoreAll } from '../lib/stripe.js';
+import { useStripe, useStripeStatus, syncStripe, presetFrom, linkTo, ignore, ignoreAll, unhide, addAllAsBookings } from '../lib/stripe.js';
+import { useMemo, useState } from 'react';
 import { matchesFor } from '../lib/stripe.js';
-import { openPayment, newBooking, closeSheet } from '../lib/open.js';
+import { openPayment, openPayments, newBooking, closeSheet } from '../lib/open.js';
 import { Sheet, Icon } from './ui.jsx';
 import BookingRow from './BookingRow.jsx';
 
 const kept = (p) => num(p.amount) - num(p.refunded);
+
+function caughtUp(ps) {
+  const linked = ps.filter((p) => p.status === 'linked').length;
+  const hidden = ps.filter((p) => p.status === 'ignored').length;
+  return `Nothing new. ${plural(linked, 'payment')} on bookings${hidden ? `, ${hidden} hidden` : ''}. Hidden payments don’t count toward income — open All payments to add them.`;
+}
 
 const checkedAt = (t) => (t ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 
@@ -66,7 +72,7 @@ export function NewPayments() {
           <div className="btn-row">
             {waiting.length > 6 && <span className="muted small">+{waiting.length - 6} more</span>}
             {check}
-            {waiting.length > 1 && <button className="mini" onClick={() => ignoreAll(waiting)}>Hide all</button>}
+            <button className="mini" onClick={openPayments}>All payments</button>
           </div>
           <p className="muted small">Tap one to add it as a booking or attach it to one you already logged.</p>
         </>
@@ -76,12 +82,13 @@ export function NewPayments() {
             {st.found === 0 && !all.some((p) => !p.sample)
               ? 'Connected, but Stripe sent back no payments from the last 90 days.'
               : all.some((p) => !p.sample)
-                ? `All caught up — ${plural(all.filter((p) => !p.sample).length, 'payment')} handled.`
+                ? caughtUp(all.filter((p) => !p.sample))
                 : 'Waiting for the first check.'}
             {st.lastSync ? ` Checked ${checkedAt(st.lastSync)}.` : ''}
           </p>
           <div className="btn-row">
             {check}
+            {all.some((p) => !p.sample) && <button className="mini" onClick={openPayments}>All payments</button>}
             {st.found === 0 && <button className="mini" onClick={() => syncStripe(true, { days: 365 })} disabled={st.syncing}>Look back a year</button>}
           </div>
         </>
@@ -141,7 +148,7 @@ export function PaymentSheet({ id, onClose }) {
           )}
           <div className="btn-row edit-sec">
             {p.status === 'ignored' ? (
-              <span className="muted small">Hidden from Home.</span>
+              <button className="btn ghost" onClick={() => unhide([p])}>Hidden — put it back on Home</button>
             ) : (
               <button className="btn ghost" onClick={() => { ignore(p); closeSheet(); }}>Not a booking — hide it</button>
             )}
@@ -180,6 +187,7 @@ export function StripeSettings({ signedIn }) {
           <div className="btn-row">
             <button className="btn ghost" onClick={() => syncStripe(true)} disabled={st.syncing}>{st.syncing ? 'Checking…' : 'Check Stripe now'}</button>
             <button className="btn ghost" onClick={() => syncStripe(true, { days: 365 })} disabled={st.syncing}>Look back a year</button>
+            {all.length > 0 && <button className="btn ghost" onClick={openPayments}>All payments</button>}
           </div>
           <details className="setup-details">
             <summary>How it’s set up</summary>
@@ -198,5 +206,78 @@ function SetupSteps() {
       <li>In Vercel → shoot-plus → <b>Settings → Environment Variables</b>, add <code>STRIPE_SECRET_KEY</code> (the rk_live_… key) and <code>STRIPE_OWNER_EMAIL</code> (the email you sign in with here). Redeploy.</li>
       <li>Come back and tap <b>Check Stripe now</b>. The first check pulls in the last 90 days.</li>
     </ol>
+  );
+}
+
+const TABS = [
+  { id: 'new', label: 'New' },
+  { id: 'ignored', label: 'Hidden' },
+  { id: 'linked', label: 'On bookings' },
+];
+
+/** Every Stripe payment, by status. Hidden ones can be put back or added as bookings in one go. */
+export function PaymentsSheet({ onClose }) {
+  const biz = useBiz();
+  const all = useStripe();
+  const real = useMemo(() => all.filter((p) => !p.sample).sort((a, b) => b.created - a.created), [all]);
+  const count = (id) => real.filter((p) => p.status === id).length;
+  const [tab, setTab] = useState(() => (count('new') ? 'new' : count('ignored') ? 'ignored' : 'linked'));
+  const [confirm, setConfirm] = useState(false);
+  const shown = real.filter((p) => p.status === tab);
+  const total = shown.reduce((t, p) => t + kept(p), 0);
+  return (
+    <Sheet title="Stripe payments" onClose={onClose}>
+      <div className="seg" role="group" aria-label="Which payments">
+        {TABS.map((t) => (
+          <button key={t.id} aria-pressed={tab === t.id} onClick={() => { setTab(t.id); setConfirm(false); }}>
+            {t.label} · {count(t.id)}
+          </button>
+        ))}
+      </div>
+      <p className="muted small" style={{ margin: '10px 0' }}>
+        {tab === 'new' && 'Waiting on Home. Payments count toward income once they’re on a booking.'}
+        {tab === 'ignored' && 'Hidden payments don’t count toward income. Put them back, or add them as bookings.'}
+        {tab === 'linked' && 'Already counted in your income through their bookings.'}
+        {shown.length > 0 && ` ${money(total)} total.`}
+      </p>
+      {shown.length > 0 && tab !== 'linked' && (
+        <div className="btn-row" style={{ marginBottom: 6 }}>
+          <button
+            className={`btn${confirm ? '' : ' ghost'}`}
+            onClick={() => {
+              if (!confirm) return setConfirm(true);
+              addAllAsBookings(biz, shown);
+              setConfirm(false);
+              setTab('linked');
+            }}
+          >
+            {shown.length === 1 ? (confirm ? 'Tap again to add it' : 'Add it as a booking') : confirm ? `Tap again to add ${shown.length} bookings` : `Add all ${shown.length} as bookings`}
+          </button>
+          {tab === 'ignored' && <button className="btn ghost" onClick={() => { unhide(shown); setTab('new'); }}>Put all back on Home</button>}
+          {tab === 'new' && shown.length > 1 && <button className="btn ghost" onClick={() => ignoreAll(shown)}>Hide all</button>}
+        </div>
+      )}
+      {shown.length ? (
+        <ul className="rows">
+          {shown.map((p) => (
+            <li className="row" key={p.id}>
+              <button className="bk-open" onClick={() => openPayment(p.id)}>
+                <span className="pay-mark" aria-hidden="true"><Icon name={p.via === 'Tap to Pay' ? 'phone' : 'card'} size={18} /></span>
+                <span className="row-title bk-text">
+                  <span className="bk-title">{p.name || p.what || 'Payment'}</span>
+                  <span className="bk-meta">
+                    <span>{fmt(p.date, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                    <span>{p.via}</span>
+                  </span>
+                </span>
+                <span className="bk-amt"><b>{money(kept(p))}</b>{p.fee ? <span>{money(p.fee)} fee</span> : null}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="empty">None here.</p>
+      )}
+    </Sheet>
   );
 }

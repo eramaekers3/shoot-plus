@@ -14,6 +14,8 @@ export const openBooking = (id) => open('booking', id);
 export const openClient = (id) => open('client', id);
 export const openService = (id) => open('service', id);
 export const openPayment = (id) => open('stripe', id);
+/** Every Stripe payment: new, on a booking, or hidden. */
+export const openPayments = () => open('payments');
 /** The stepped "new booking" sheet. preset can fill in the service, package or client. */
 export const newBooking = (preset) => open('new', null, preset);
 export const closeSheet = () => {
