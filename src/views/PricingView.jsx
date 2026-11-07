@@ -168,7 +168,7 @@ function WebsiteCard({ biz }) {
             <span>
               <b>{w.name}</b>
               <span className="muted small">
-                {w.packages.length ? w.packages.map((p) => `${p.name} ${money(p.price)}`).join(' · ') : `${money(w.price)}${w.key === 'sportsphotos' ? ' per photo' : ''}`}
+                {w.packages.length ? w.packages.map((p) => `${p.name} ${money(p.price)}`).join(' · ') : money(w.price)}
               </span>
             </span>
             <span className={`tag-kind${w.existing ? '' : ' new'}`}>{w.existing ? 'Update' : 'New'}</span>

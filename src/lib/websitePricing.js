@@ -2,13 +2,13 @@
 // copies them into your services: a service you already have (matched by name) keeps its color, hours
 // and bookings and gets the website's price, packages and details; anything missing is added.
 // When the website changes, update this list and bump VERSION so the card offers the update again.
-import { put, saveSettings, get, SETTINGS_ID } from '../store.js';
+import { put, saveSettings, get, list, remove, SETTINGS_ID } from '../store.js';
 import { idFor } from './ids.js';
 import { norm } from './text.js';
 import { toast } from './toast.js';
 import { SERVICE_COLORS } from './biz.js';
 
-export const VERSION = '2026-11-07';
+export const VERSION = '2026-11-07b';
 export const SOURCE = 'https://ethanramaekers.com';
 
 const TRAVEL = 'Travel: $0.67 per mile if more than 100 miles round trip from Lincoln, NE.';
@@ -52,21 +52,10 @@ export const WEBSITE_SERVICES = [
     notes: TRAVEL,
     page: '/sports-team-media',
   },
-  {
-    key: 'sportsphotos',
-    match: ['sports photo', 'photo download', 'photo sales'],
-    name: 'Sports photo downloads',
-    kind: 'photo',
-    color: '#ffcf5c',
-    unit: 'flat',
-    price: 5,
-    includes: 'One game photo, sold through the website.',
-    packages: [],
-    addons: [],
-    notes: 'Priced per photo. Some photos are free.',
-    page: '/sportsphotos',
-  },
 ];
+
+/** Services an earlier version of this list added that you've since dropped: removed if no booking uses them. */
+const DROPPED = ['sportsphotos'];
 
 /** Listed on the website without prices (shown so you know to fill them in yourself). */
 export const NO_PRICE_ON_SITE = ['Family / group sessions', 'Couples sessions'];
@@ -110,8 +99,16 @@ export function applyWebsitePricing(services) {
       added++;
     }
   });
+  let removed = 0;
+  for (const key of DROPPED) {
+    const id = idFor(`web-service-${key}`);
+    if (get(id) && !list('booking').some((b) => b.serviceId === id)) {
+      remove(id);
+      removed++;
+    }
+  }
   saveSettings({ websitePricing: VERSION });
-  toast(`Prices from your website: ${[updated && `${updated} updated`, added && `${added} added`].filter(Boolean).join(', ')}`);
+  toast(`Prices from your website: ${[updated && `${updated} updated`, added && `${added} added`, removed && `${removed} removed`].filter(Boolean).join(', ')}`);
 }
 
 export const isApplied = () => ((get(SETTINGS_ID) || {}).websitePricing || '') >= VERSION;
