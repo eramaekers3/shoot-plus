@@ -4,6 +4,8 @@ import { useBiz, money, sum, done, num } from '../lib/biz.js';
 import { openService, newBooking, open } from '../lib/open.js';
 import CardStack from '../components/CardStack.jsx';
 import { Icon } from '../components/ui.jsx';
+import { VERSION, SOURCE, preview, applyWebsitePricing, NO_PRICE_ON_SITE } from '../lib/websitePricing.js';
+import { fmt } from '../lib/dates.js';
 
 export default function PricingView() {
   const biz = useBiz();
@@ -17,6 +19,7 @@ export default function PricingView() {
         <h1>Pricing</h1>
         <p>What you charge for each kind of shoot, to check before you quote someone.</p>
       </header>
+      {(biz.s.websitePricing || '') < VERSION && <WebsiteCard biz={biz} />}
       {biz.services.length === 0 && (
         <section className="card">
           <p className="empty" style={{ marginTop: 0 }}>Add your first service, like portraits, senior photos or a promo video.</p>
@@ -26,6 +29,11 @@ export default function PricingView() {
       <button className="btn wide add-service" onClick={() => open('service', null)}>
         <Icon name="plus" size={18} /> Add a service
       </button>
+      {(biz.s.websitePricing || '') >= VERSION && (
+        <button className="link-btn center-link" onClick={() => applyWebsitePricing(biz.services)}>
+          Prices match ethanramaekers.com ({fmt(biz.s.websitePricing, { month: 'short', day: 'numeric' })}) · apply again
+        </button>
+      )}
     </>
   );
 }
@@ -138,6 +146,46 @@ function Quote({ biz }) {
         }
       >
         Book at this price
+      </button>
+    </section>
+  );
+}
+
+/** Offers to copy the prices from your website into your services. */
+function WebsiteCard({ biz }) {
+  const [confirm, setConfirm] = useState(false);
+  const plan = preview(biz.services);
+  return (
+    <section className="card web-card">
+      <div className="card-head">
+        <h2>Prices from your website</h2>
+        <a className="meta" href={SOURCE} target="_blank" rel="noreferrer">ethanramaekers.com ↗</a>
+      </div>
+      <ul className="web-list">
+        {plan.map((w) => (
+          <li key={w.key}>
+            <i style={{ background: (w.existing && w.existing.color) || w.color }} />
+            <span>
+              <b>{w.name}</b>
+              <span className="muted small">
+                {w.packages.length ? w.packages.map((p) => `${p.name} ${money(p.price)}`).join(' · ') : `${money(w.price)}${w.key === 'sportsphotos' ? ' per photo' : ''}`}
+              </span>
+            </span>
+            <span className={`tag-kind${w.existing ? '' : ' new'}`}>{w.existing ? 'Update' : 'New'}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="muted small">
+        Services you already have keep their color, hours and past bookings. {NO_PRICE_ON_SITE.join(' and ')} are on the site without prices, so set those yourself.
+      </p>
+      <button
+        className={`btn wide${confirm ? '' : ' ghost'}`}
+        onClick={() => {
+          if (!confirm) return setConfirm(true);
+          applyWebsitePricing(biz.services);
+        }}
+      >
+        {confirm ? 'Tap again to update your prices' : 'Update from ethanramaekers.com'}
       </button>
     </section>
   );

@@ -1016,3 +1016,13 @@ form.inline .num-in { flex: 0 1 92px; }
 .due-tag.late { background: color-mix(in srgb, var(--coral) 18%, var(--raised)); color: var(--coral); }
 .due-tag.done { background: color-mix(in srgb, var(--mint) 16%, var(--raised)); color: var(--mint); }
 .edit-tag { color: var(--sun); }
+
+/* Prices from the website */
+.web-card { border-color: color-mix(in srgb, var(--sun) 40%, var(--line)); }
+.web-card .card-head a.meta { color: var(--sun); text-decoration: none; }
+.web-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.web-list li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; background: var(--raised); }
+.web-list li > i { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.web-list li > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.web-list .tag-kind { white-space: nowrap; max-width: 42%; overflow: hidden; text-overflow: ellipsis; }
+.web-list .tag-kind.new { background: color-mix(in srgb, var(--mint) 18%, var(--raised)); color: var(--mint); }
