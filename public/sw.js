@@ -1,6 +1,6 @@
 // Offline support: the app shell is cached so shoot+ opens without a connection.
 // Data never goes through here; it lives in local storage and syncs to Supabase.
-const CACHE = 'shootplus-v1';
+const CACHE = 'shootplus-v2'; // bumping this clears what older versions cached
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
@@ -21,6 +21,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   const isFont = url.host === 'fonts.googleapis.com' || url.host === 'fonts.gstatic.com';
   if (url.origin !== location.origin && !isFont) return; // leave Supabase and others alone
+  if (url.pathname.startsWith('/api/')) return; // server answers (like Stripe) are always fetched fresh
 
   if (req.mode === 'navigate') {
     // Network first for the page, so updates show up; cached copy when offline.

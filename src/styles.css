@@ -989,3 +989,6 @@ form.inline .num-in { flex: 0 1 92px; }
 .stripe-line .icon { color: #c9c1ff; }
 .setup-details { margin-top: 10px; }
 .setup-details summary { cursor: pointer; color: var(--muted); font-weight: 700; font-size: 14px; }
+.stripe-card.has-error { border-color: color-mix(in srgb, var(--coral) 55%, var(--line)); }
+.stripe-err { margin: 0 0 8px; }
+.stripe-quiet { margin: 0 0 4px; }

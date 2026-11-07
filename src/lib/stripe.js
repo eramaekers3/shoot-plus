@@ -15,14 +15,30 @@ import { toast } from './toast.js';
 import { num } from './biz.js';
 
 const LAST = 'shootplus.stripeChecked';
+const RESULT = 'shootplus.stripeResult'; // what the last check found, so it survives closing the app
 const EVERY = 20 * 60 * 1000; // check at most every 20 minutes on its own
 
-let state = { syncing: false, error: '', notSetUp: false, lastSync: readLast() };
+let state = { syncing: false, error: '', notSetUp: false, lastSync: readLast(), found: null, ...readResult() };
 const listeners = new Set();
 const set = (changes) => {
   state = { ...state, ...changes };
   listeners.forEach((l) => l());
 };
+function readResult() {
+  try {
+    const r = JSON.parse(localStorage.getItem(RESULT) || 'null');
+    return r ? { error: r.error || '', notSetUp: !!r.notSetUp, found: r.found ?? null } : {};
+  } catch {
+    return {};
+  }
+}
+function saveResult() {
+  try {
+    localStorage.setItem(RESULT, JSON.stringify({ error: state.error, notSetUp: state.notSetUp, found: state.found }));
+  } catch {
+    /* storage unavailable */
+  }
+}
 function readLast() {
   try {
     return Number(localStorage.getItem(LAST)) || 0;
@@ -45,21 +61,25 @@ export const recId = (chargeId) => idFor(`stripe:${chargeId}`);
 export const useStripe = () => useKind('stripe');
 
 /** Asks the server for payments since the newest one we have, and saves any new ones. */
-export async function syncStripe(force = false) {
+export async function syncStripe(force = false, { days } = {}) {
   if (!supabase || state.syncing) return;
-  if (!force && Date.now() - state.lastSync < EVERY) return;
+  // Check right away when nothing has come in yet or the last check failed; otherwise at most every 20 minutes.
+  const settled = list('stripe').some((r) => !r.sample) && !state.error;
+  if (!force && settled && Date.now() - state.lastSync < EVERY) return;
   const { data } = await supabase.auth.getSession();
   const token = data.session && data.session.access_token;
   if (!token) return;
-  set({ syncing: true, error: '' });
+  set({ syncing: true });
   try {
-    const have = list('stripe');
+    const have = list('stripe').filter((r) => !r.sample);
     const newest = have.reduce((m, r) => Math.max(m, r.created || 0), 0);
-    const since = newest ? newest - 3 * 86400 : '';
-    const res = await fetch(`/api/stripe${since ? `?since=${since}` : ''}`, { headers: { Authorization: `Bearer ${token}` } });
+    const since = days ? Math.floor(Date.now() / 1000 - days * 86400) : newest ? newest - 3 * 86400 : '';
+    const res = await fetch(`/api/stripe${since ? `?since=${since}` : ''}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
     const body = await res.json().catch(() => ({}));
     if (res.status === 503 || res.status === 404) {
       set({ syncing: false, notSetUp: true, error: res.status === 404 ? 'The Stripe server function isn’t deployed yet.' : body.error });
+      saveResult();
+      if (force) toast(state.error);
       return;
     }
     if (!res.ok) throw new Error(body.error || `Couldn’t reach Stripe (${res.status}).`);
@@ -89,10 +109,12 @@ export async function syncStripe(force = false) {
     } catch {
       /* storage unavailable */
     }
-    set({ syncing: false, notSetUp: false, error: '', lastSync: now });
-    if (force) toast(fresh ? `${fresh} new Stripe payment${fresh === 1 ? '' : 's'}` : 'Stripe is up to date');
+    set({ syncing: false, notSetUp: false, error: '', lastSync: now, found: (body.charges || []).length });
+    saveResult();
+    if (force) toast(fresh ? `${fresh} new Stripe payment${fresh === 1 ? '' : 's'}` : (body.charges || []).length ? 'Stripe is up to date' : 'Stripe sent back no payments for that stretch');
   } catch (e) {
     set({ syncing: false, error: e.message || String(e) });
+    saveResult();
     if (force) toast(e.message || 'Couldn’t reach Stripe');
   }
 }

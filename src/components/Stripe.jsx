@@ -1,6 +1,6 @@
 // Stripe payments in the app: the "New payments" card on Home and the sheet for one payment.
 import { useMemo } from 'react';
-import { useRecord } from '../store.js';
+import { useRecord, useSyncStatus } from '../store.js';
 import { fmt } from '../lib/dates.js';
 import { plural } from '../lib/text.js';
 import { useBiz, money, num } from '../lib/biz.js';
@@ -12,46 +12,80 @@ import BookingRow from './BookingRow.jsx';
 
 const kept = (p) => num(p.amount) - num(p.refunded);
 
-/** Home card: payments that came in through Stripe and aren't on a booking yet. Hidden when there are none. */
+const checkedAt = (t) => (t ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
+
+/**
+ * Home card: payments that came in through Stripe and aren't on a booking yet. While you're signed in it
+ * always shows, so you can see whether Stripe is working: new payments, "nothing new", or what went wrong.
+ */
 export function NewPayments() {
   const all = useStripe();
   const st = useStripeStatus();
+  const sync = useSyncStatus();
   const waiting = useMemo(() => all.filter((p) => p.status === 'new').sort((a, b) => b.created - a.created), [all]);
-  if (!waiting.length) return null;
+  const signedIn = !!sync.email;
+  if (!waiting.length && !signedIn) return null;
   const total = waiting.reduce((t, p) => t + kept(p), 0);
+  const check = (
+    <button className="mini" onClick={() => syncStripe(true)} disabled={st.syncing}>{st.syncing ? 'Checking…' : 'Check now'}</button>
+  );
   return (
-    <section className="card stripe-card" aria-labelledby="sp-h">
+    <section className={`card stripe-card${st.error ? ' has-error' : ''}`} aria-labelledby="sp-h">
       <div className="card-head">
-        <h2 id="sp-h">New from Stripe</h2>
-        <span className="meta">{money(total)}</span>
+        <h2 id="sp-h">{waiting.length ? 'New from Stripe' : 'Stripe'}</h2>
+        <span className="meta">{waiting.length ? money(total) : st.syncing ? 'Checking…' : ''}</span>
       </div>
-      <ul className="rows">
-        {waiting.slice(0, 6).map((p) => (
-          <li className="row" key={p.id}>
-            <button className="bk-open" onClick={() => openPayment(p.id)}>
-              <span className="pay-mark" aria-hidden="true"><Icon name={p.via === 'Tap to Pay' ? 'phone' : 'card'} size={18} /></span>
-              <span className="row-title bk-text">
-                <span className="bk-title">{p.name || p.what || 'Payment'}</span>
-                <span className="bk-meta">
-                  <span>{fmt(p.date, { month: 'short', day: 'numeric' })}</span>
-                  <span>{p.via}</span>
-                  {p.name && p.what && <span>{p.what}</span>}
-                </span>
-              </span>
-              <span className="bk-amt">
-                <b>{money(kept(p))}</b>
-                {p.fee ? <span>{money(p.fee)} fee</span> : null}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="btn-row">
-        {waiting.length > 6 && <span className="muted small">+{waiting.length - 6} more</span>}
-        <button className="mini" onClick={() => syncStripe(true)} disabled={st.syncing}>{st.syncing ? 'Checking…' : 'Check now'}</button>
-        {waiting.length > 1 && <button className="mini" onClick={() => ignoreAll(waiting)}>Hide all</button>}
-      </div>
-      <p className="muted small">Tap one to add it as a booking or attach it to one you already logged.</p>
+      {st.error ? (
+        <>
+          <p className="err stripe-err">{st.error}</p>
+          <div className="btn-row">{check}<span className="muted small">Setup steps are in Settings → Stripe.</span></div>
+        </>
+      ) : waiting.length ? (
+        <>
+          <ul className="rows">
+            {waiting.slice(0, 6).map((p) => (
+              <li className="row" key={p.id}>
+                <button className="bk-open" onClick={() => openPayment(p.id)}>
+                  <span className="pay-mark" aria-hidden="true"><Icon name={p.via === 'Tap to Pay' ? 'phone' : 'card'} size={18} /></span>
+                  <span className="row-title bk-text">
+                    <span className="bk-title">{p.name || p.what || 'Payment'}</span>
+                    <span className="bk-meta">
+                      <span>{fmt(p.date, { month: 'short', day: 'numeric' })}</span>
+                      <span>{p.via}</span>
+                      {p.name && p.what && <span>{p.what}</span>}
+                    </span>
+                  </span>
+                  <span className="bk-amt">
+                    <b>{money(kept(p))}</b>
+                    {p.fee ? <span>{money(p.fee)} fee</span> : null}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="btn-row">
+            {waiting.length > 6 && <span className="muted small">+{waiting.length - 6} more</span>}
+            {check}
+            {waiting.length > 1 && <button className="mini" onClick={() => ignoreAll(waiting)}>Hide all</button>}
+          </div>
+          <p className="muted small">Tap one to add it as a booking or attach it to one you already logged.</p>
+        </>
+      ) : (
+        <>
+          <p className="muted small stripe-quiet">
+            {st.found === 0 && !all.some((p) => !p.sample)
+              ? 'Connected, but Stripe sent back no payments from the last 90 days.'
+              : all.some((p) => !p.sample)
+                ? `All caught up — ${plural(all.filter((p) => !p.sample).length, 'payment')} handled.`
+                : 'Waiting for the first check.'}
+            {st.lastSync ? ` Checked ${checkedAt(st.lastSync)}.` : ''}
+          </p>
+          <div className="btn-row">
+            {check}
+            {st.found === 0 && <button className="mini" onClick={() => syncStripe(true, { days: 365 })} disabled={st.syncing}>Look back a year</button>}
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -121,7 +155,7 @@ export function PaymentSheet({ id, onClose }) {
 /** Settings → Stripe: whether it's working, a manual check, and how to set it up. */
 export function StripeSettings({ signedIn }) {
   const st = useStripeStatus();
-  const all = useStripe();
+  const all = useStripe().filter((p) => !p.sample);
   const waiting = all.filter((p) => p.status === 'new').length;
   return (
     <section className="set-sec">
@@ -139,11 +173,13 @@ export function StripeSettings({ signedIn }) {
             {all.length
               ? `${plural(all.length, 'payment')} pulled in${waiting ? `, ${waiting} waiting on Home` : ''}.`
               : 'Payments from payment links, Tap to Pay and your website checkout show up on Home.'}
-            {st.lastSync ? ` Checked ${new Date(st.lastSync).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.` : ''}
+            {st.found != null ? ` The last check found ${plural(st.found, 'payment')}.` : ''}
+            {st.lastSync ? ` Checked ${checkedAt(st.lastSync)}.` : ''}
           </p>
           {st.error && <p className="err">{st.error}</p>}
           <div className="btn-row">
             <button className="btn ghost" onClick={() => syncStripe(true)} disabled={st.syncing}>{st.syncing ? 'Checking…' : 'Check Stripe now'}</button>
+            <button className="btn ghost" onClick={() => syncStripe(true, { days: 365 })} disabled={st.syncing}>Look back a year</button>
           </div>
           <details className="setup-details">
             <summary>How it’s set up</summary>
