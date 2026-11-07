@@ -80,7 +80,7 @@ export function NewPayments() {
         <>
           <p className="muted small stripe-quiet">
             {st.found === 0 && !all.some((p) => !p.sample)
-              ? 'Connected, but Stripe sent back no payments from the last 90 days.'
+              ? 'Connected, but Stripe sent back no payments from the last 90 days. Tap Get all past payments to go further back.'
               : all.some((p) => !p.sample)
                 ? caughtUp(all.filter((p) => !p.sample))
                 : 'Waiting for the first check.'}
@@ -89,7 +89,7 @@ export function NewPayments() {
           <div className="btn-row">
             {check}
             {all.some((p) => !p.sample) && <button className="mini" onClick={openPayments}>All payments</button>}
-            {st.found === 0 && <button className="mini" onClick={() => syncStripe(true, { days: 365 })} disabled={st.syncing}>Look back a year</button>}
+            {<button className="mini" onClick={() => syncStripe(true, { everything: true })} disabled={st.syncing}>Get all past payments</button>}
           </div>
         </>
       )}
@@ -186,7 +186,7 @@ export function StripeSettings({ signedIn }) {
           {st.error && <p className="err">{st.error}</p>}
           <div className="btn-row">
             <button className="btn ghost" onClick={() => syncStripe(true)} disabled={st.syncing}>{st.syncing ? 'Checking…' : 'Check Stripe now'}</button>
-            <button className="btn ghost" onClick={() => syncStripe(true, { days: 365 })} disabled={st.syncing}>Look back a year</button>
+            <button className="btn ghost" onClick={() => syncStripe(true, { everything: true })} disabled={st.syncing}>Get all past payments</button>
             {all.length > 0 && <button className="btn ghost" onClick={openPayments}>All payments</button>}
           </div>
           <details className="setup-details">

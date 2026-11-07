@@ -61,7 +61,7 @@ export const recId = (chargeId) => idFor(`stripe:${chargeId}`);
 export const useStripe = () => useKind('stripe');
 
 /** Asks the server for payments since the newest one we have, and saves any new ones. */
-export async function syncStripe(force = false, { days } = {}) {
+export async function syncStripe(force = false, { days, everything } = {}) {
   if (!supabase || state.syncing) return;
   // Check right away when nothing has come in yet or the last check failed; otherwise at most every 20 minutes.
   const settled = list('stripe').some((r) => !r.sample) && !state.error;
@@ -73,7 +73,7 @@ export async function syncStripe(force = false, { days } = {}) {
   try {
     const have = list('stripe').filter((r) => !r.sample);
     const newest = have.reduce((m, r) => Math.max(m, r.created || 0), 0);
-    const since = days ? Math.floor(Date.now() / 1000 - days * 86400) : newest ? newest - 3 * 86400 : '';
+    const since = everything ? 'all' : days ? Math.floor(Date.now() / 1000 - days * 86400) : newest ? newest - 3 * 86400 : '';
     const res = await fetch(`/api/stripe${since ? `?since=${since}` : ''}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
     const body = await res.json().catch(() => ({}));
     if (res.status === 503 || res.status === 404) {
@@ -111,7 +111,17 @@ export async function syncStripe(force = false, { days } = {}) {
     }
     set({ syncing: false, notSetUp: false, error: '', lastSync: now, found: (body.charges || []).length });
     saveResult();
-    if (force) toast(fresh ? `${fresh} new Stripe payment${fresh === 1 ? '' : 's'}` : (body.charges || []).length ? 'Stripe is up to date' : 'Stripe sent back no payments for that stretch');
+    if (force) {
+      const n = (body.charges || []).length;
+      const back = body.oldest ? ` (back to ${new Date(body.oldest * 1000).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })})` : '';
+      toast(
+        fresh
+          ? `${fresh} new Stripe payment${fresh === 1 ? '' : 's'}${back}`
+          : n
+            ? `Stripe sent ${n} payment${n === 1 ? '' : 's'}${back}, all already here`
+            : 'Stripe sent back no payments for that stretch'
+      );
+    }
   } catch (e) {
     set({ syncing: false, error: e.message || String(e) });
     saveResult();

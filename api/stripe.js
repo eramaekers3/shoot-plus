@@ -1,5 +1,6 @@
-// GET /api/stripe?since=<unix seconds>   Authorization: Bearer <Supabase session token>
-//   → { charges: [...] }  successful Stripe payments since then, newest first (at most 300)
+// GET /api/stripe?since=<unix seconds | all>   Authorization: Bearer <Supabase session token>
+//   → { charges: [...], seen, oldest }  successful Stripe payments since then, newest first
+//   (since=all reads your whole Stripe history, up to 3,000 payments)
 //
 // Read-only. The Stripe key lives only in Vercel's environment variables and never reaches the app.
 // Only the account whose email matches STRIPE_OWNER_EMAIL can ask, because anyone can make an account
@@ -11,7 +12,7 @@
 //   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY   (already set for the app)
 import { createClient } from '@supabase/supabase-js';
 
-export const config = { maxDuration: 30 };
+export const config = { maxDuration: 60 };
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -59,15 +60,16 @@ export async function handle({ token, since }, send) {
     return send(403, { error: 'This Stripe account belongs to a different shoot+ account.' });
   }
 
-  const from = Math.max(0, Math.floor(Number(since) || Date.now() / 1000 - 90 * 86400));
+  const everything = since === 'all';
+  const from = everything ? 0 : Math.max(0, Math.floor(Number(since) || Date.now() / 1000 - 90 * 86400));
   try {
-    const charges = await all('charges', [['created[gte]', String(from)], ['expand[]', 'data.balance_transaction']]);
+    const charges = await all('charges', [['created[gte]', String(from)], ['expand[]', 'data.balance_transaction']], everything ? 3000 : 300);
     // Payment links and website checkout: what was bought and who bought it.
     let sessions = [];
     try {
-      sessions = await all('checkout/sessions', [['created[gte]', String(from - 86400)], ['status', 'complete'], ['expand[]', 'data.line_items']]);
+      sessions = await all('checkout/sessions', [['created[gte]', String(Math.max(0, from - 86400))], ['status', 'complete'], ['expand[]', 'data.line_items']], everything ? 3000 : 300);
     } catch {
-      sessions = await all('checkout/sessions', [['created[gte]', String(from - 86400)], ['status', 'complete']]).catch(() => []);
+      sessions = await all('checkout/sessions', [['created[gte]', String(Math.max(0, from - 86400))], ['status', 'complete']], everything ? 3000 : 300).catch(() => []);
     }
     const byIntent = new Map(sessions.filter((s) => s.payment_intent).map((s) => [s.payment_intent, s]));
 
@@ -94,7 +96,10 @@ export async function handle({ token, since }, send) {
           receipt: c.receipt_url || '',
         };
       });
-    return send(200, { charges: out });
+    const oldest = charges.length ? Math.min(...charges.map((c) => c.created)) : null;
+    // What Stripe sent back (no amounts or names), so a check can be followed in Vercel's logs.
+    console.log(`stripe check: since=${everything ? 'all' : new Date(from * 1000).toISOString().slice(0, 10)} seen=${charges.length} paid=${out.length} oldest=${oldest ? new Date(oldest * 1000).toISOString().slice(0, 10) : '-'}`);
+    return send(200, { charges: out, seen: charges.length, oldest });
   } catch (e) {
     const msg = e.status === 401 ? 'Stripe didn’t accept the key. Check STRIPE_SECRET_KEY in Vercel.'
       : e.status === 403 ? `The Stripe key can’t read everything it needs: ${e.message}`
