@@ -163,7 +163,8 @@ const feeLine = (p) => (p.fee ? [{ id: newId(), cat: 'fees', label: 'Stripe fee'
 
 // What a payment's description is remembered under: "Senior Photos – Classic (x1)" → "senior photos classic".
 const keyOf = (what) => norm(what).replace(/\(x\d+\)/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-const words = (t) => keyOf(t).split(' ').filter((w) => w.length > 1);
+// Words for matching: plurals folded ("seniors" = "senior"), numbers kept ("Package 3").
+const words = (t) => keyOf(t).split(' ').filter((w) => w.length > 1 || /\d/.test(w)).map((w) => (w.length > 3 ? w.replace(/s$/, '') : w));
 
 /**
  * Best guess at the service (and package) a payment was for, or null.
@@ -177,16 +178,23 @@ export function guessService(services, p) {
   if (learned && services.some((s) => s.id === learned.serviceId)) return { ...learned, sure: true, why: 'learned' };
   const what = words(p.what);
   if (what.length) {
-    let best = null;
-    for (const s of services) {
-      const sw = words(s.name);
-      const hits = sw.filter((w) => what.includes(w) || what.includes(w.replace(/s$/, ''))).length;
-      if (!hits || hits < Math.min(sw.length, 2)) continue;
-      const pkg = (s.packages || []).find((pk) => pk.name && words(pk.name).every((w) => what.includes(w)));
-      const score = hits / sw.length + (pkg ? 1 : 0);
-      if (!best || score > best.score) best = { score, serviceId: s.id, pkg: pkg ? pkg.name : '', hours: pkg ? pkg.hours : s.hours };
+    // Score each service: words its name shares with the description (ignoring generic ones like "photos"),
+    // plus the words of the longest package name that appears in full. The top score wins if it's alone.
+    const GENERIC = new Set(['photo', 'session', 'shoot', 'picture', 'video', 'package', 'and', 'the', 'with']);
+    const scored = services
+      .map((s) => {
+        const nameHits = words(s.name).filter((w) => !GENERIC.has(w) && what.includes(w)).length;
+        const pkg = (s.packages || [])
+          .filter((pk) => pk.name && words(pk.name).every((w) => what.includes(w)))
+          .sort((a, b) => words(b.name).length - words(a.name).length)[0];
+        return { s, pkg, hits: nameHits + (pkg ? words(pkg.name).length : 0) };
+      })
+      .filter((x) => x.hits)
+      .sort((a, b) => b.hits - a.hits);
+    if (scored.length && (scored.length === 1 || scored[0].hits > scored[1].hits)) {
+      const { s, pkg } = scored[0];
+      return { serviceId: s.id, pkg: pkg ? pkg.name : '', hours: pkg ? pkg.hours : s.hours, sure: true, why: 'name' };
     }
-    if (best) return { serviceId: best.serviceId, pkg: best.pkg, hours: best.hours, sure: true, why: 'name' };
   }
   const amount = kept(p);
   let hits = [];

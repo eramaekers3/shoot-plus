@@ -4,7 +4,7 @@ import { useBiz, money, sum, done, num } from '../lib/biz.js';
 import { openService, newBooking, open } from '../lib/open.js';
 import CardStack from '../components/CardStack.jsx';
 import { Icon } from '../components/ui.jsx';
-import { VERSION, SOURCE, preview, applyWebsitePricing, NO_PRICE_ON_SITE } from '../lib/websitePricing.js';
+import { VERSION, SOURCE, preview, applyWebsitePricing } from '../lib/websitePricing.js';
 import { fmt } from '../lib/dates.js';
 
 export default function PricingView() {
@@ -176,7 +176,7 @@ function WebsiteCard({ biz }) {
         ))}
       </ul>
       <p className="muted small">
-        Services you already have keep their color, hours and past bookings. {NO_PRICE_ON_SITE.join(' and ')} are on the site without prices, so set those yourself.
+        Services you already have keep their color and past bookings; anything not on your website stays as it is.
       </p>
       <button
         className={`btn wide${confirm ? '' : ' ghost'}`}
