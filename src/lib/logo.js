@@ -20,10 +20,15 @@ const valid = (hex) => (/^#[0-9a-f]{6}$/i.test(hex || '') ? hex : DEFAULT_LOGO);
 // Shapes in a 1024 box. The body has a raised viewfinder hump; the lens is a ring cut through it.
 export const BODY =
   'M262 332H372L414 262C422 249 434 242 449 242H575C590 242 602 249 610 262L652 332H762C824 332 864 372 864 434V700C864 762 824 802 762 802H262C200 802 160 762 160 700V434C160 372 200 332 262 332Z';
-const LENS = { cx: 452, cy: 556, r: 156 };
-const RING = (r) => `M${LENS.cx - r} ${LENS.cy}a${r} ${r} 0 1 0 ${r * 2} 0a${r} ${r} 0 1 0 ${-r * 2} 0Z`;
-// The plus is a thin cross with a round stroke, which rounds its outer corners.
-const PLUS = 'M722 552h36v102h102v36h-102v102h-36v-102h-102v-36h102z';
+// The lens sits dead center under the viewfinder hump (the body runs 160–864 across, 332–802 down).
+export const LENS = { cx: 512, cy: 568, cut: 166, glass: 110 };
+export const RING = (r, cx = LENS.cx, cy = LENS.cy) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${r * 2} 0a${r} ${r} 0 1 0 ${-r * 2} 0Z`;
+// The plus bites the bottom-right corner, clear of the lens. A thin cross with a round stroke rounds its corners.
+const plusPath = (x, y, arm = 82, half = 12) =>
+  `M${x - half} ${y - arm}h${half * 2}v${arm - half}h${arm - half}v${half * 2}h${half - arm}v${arm - half}h${-half * 2}v${half - arm}h${half - arm}v${-half * 2}h${arm - half}z`;
+export const PLUS_AT = { x: 800, y: 742 };
+const PLUS = plusPath(PLUS_AT.x, PLUS_AT.y);
+const DOT = { cx: 772, cy: 412, r: 22 };
 
 /**
  * SVG markup for the mark.
@@ -34,7 +39,7 @@ const PLUS = 'M722 552h36v102h102v36h-102v102h-36v-102h-102v-36h102z';
  */
 export function logoSVG(color, { bg = false, id = 'sp', fill } = {}) {
   const c = fill || valid(color);
-  const view = bg ? '0 0 1024 1024' : '130 150 790 790';
+  const view = bg ? '0 0 1024 1024' : '130 160 790 790';
   const body = (attrs) => `<path d="${BODY}" ${attrs}/>`;
   const plus = (width, attrs) => `<path d="${PLUS}" stroke-width="${width}" stroke-linejoin="round" ${attrs}/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${view}" width="100%" height="100%">
@@ -48,8 +53,8 @@ export function logoSVG(color, { bg = false, id = 'sp', fill } = {}) {
     <radialGradient id="${id}-glass" cx=".38" cy=".32" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".25" stop-color="#fff" stop-opacity=".08"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
     <mask id="${id}-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
       <rect width="1024" height="1024" fill="#fff"/>
-      <path d="${RING(118)}" fill="#000"/>
-      ${plus(120, 'fill="#000" stroke="#000"')}
+      <path d="${RING(LENS.cut)}" fill="#000"/>
+      ${plus(104, 'fill="#000" stroke="#000"')}
     </mask>
     <clipPath id="${id}-bc">${body('')}</clipPath>
     <filter id="${id}-shadow" x="-30%" y="-30%" width="160%" height="170%">
@@ -60,25 +65,28 @@ export function logoSVG(color, { bg = false, id = 'sp', fill } = {}) {
     <filter id="${id}-soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="14"/></filter>
   </defs>
   ${bg ? `<rect width="1024" height="1024" fill="url(#${id}-tile)"/><rect x="6" y="6" width="1012" height="1012" rx="226" fill="none" stroke="url(#${id}-tileRim)" stroke-width="12"/>` : ''}
-  <g filter="url(#${id}-shadow)"><g mask="url(#${id}-cut)">
+  <g class="lg-body" filter="url(#${id}-shadow)"><g mask="url(#${id}-cut)">
     ${body(`style="fill:${c}" opacity=".85"`)}
     <g clip-path="url(#${id}-bc)">
       ${body(`fill="url(#${id}-shade)"`)}
       ${body(`fill="url(#${id}-sheen)"`)}
       ${body(`fill="none" stroke="#000" stroke-opacity=".3" stroke-width="44" transform="translate(0 20)" filter="url(#${id}-soft)"`)}
       ${body(`fill="none" stroke="url(#${id}-rim)" stroke-width="12"`)}
-      <path d="${RING(118)}" fill="none" stroke="url(#${id}-rim)" stroke-width="10"/>
+      <path d="${RING(LENS.cut)}" fill="none" stroke="url(#${id}-rim)" stroke-width="10"/>
     </g>
   </g></g>
-  <g filter="url(#${id}-shadow)">
-    <circle cx="${LENS.cx}" cy="${LENS.cy}" r="78" style="fill:${c}" opacity=".55"/>
-    <circle cx="${LENS.cx}" cy="${LENS.cy}" r="78" fill="url(#${id}-glass)"/>
-    <circle cx="${LENS.cx}" cy="${LENS.cy}" r="78" fill="none" stroke="url(#${id}-rim)" stroke-width="8"/>
-    <circle cx="764" cy="420" r="22" fill="url(#${id}-plus)"/>
+  <g class="lg-lens" filter="url(#${id}-shadow)">
+    <circle cx="${LENS.cx}" cy="${LENS.cy}" r="${LENS.glass}" style="fill:${c}" opacity=".55"/>
+    <circle cx="${LENS.cx}" cy="${LENS.cy}" r="${LENS.glass}" fill="url(#${id}-glass)"/>
+    <circle cx="${LENS.cx}" cy="${LENS.cy}" r="${LENS.glass}" fill="none" stroke="url(#${id}-rim)" stroke-width="9"/>
+    <circle cx="${LENS.cx}" cy="${LENS.cy}" r="${Math.round(LENS.glass * 0.42)}" fill="none" stroke="#fff" stroke-opacity=".16" stroke-width="6"/>
   </g>
-  <g filter="url(#${id}-shadow)">
-    ${plus(60, 'fill="#fff" stroke="#fff"')}
-    ${plus(46, `fill="url(#${id}-plus)" stroke="url(#${id}-plus)" transform="translate(0 4)"`)}
+  <g class="lg-dot" filter="url(#${id}-shadow)">
+    <circle cx="${DOT.cx}" cy="${DOT.cy}" r="${DOT.r}" fill="url(#${id}-plus)"/>
+  </g>
+  <g class="lg-plus" filter="url(#${id}-shadow)">
+    ${plus(44, 'fill="#fff" stroke="#fff"')}
+    ${plus(32, `fill="url(#${id}-plus)" stroke="url(#${id}-plus)" transform="translate(0 4)"`)}
   </g>
 </svg>`;
 }
