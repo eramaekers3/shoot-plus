@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { put, useRecord } from '../store.js';
-import { useBiz, calc, titleOf, removeWithUndo, money, dueOf, stageOf, turnaroundOf } from '../lib/biz.js';
+import { useBiz, calc, titleOf, removeWithUndo, money, dueOf, stageOf, turnaroundOf, perHour, num } from '../lib/biz.js';
 import { deliver, dueLabel } from './Queue.jsx';
 import { fmt, todayISO, parse } from '../lib/dates.js';
 import { closeSheet, openClient, newBooking } from '../lib/open.js';
@@ -27,6 +27,7 @@ export default function BookingSheet({ id, onClose }) {
     <Sheet title={titleOf(biz, b)} onClose={onClose}>
       <p className="sheet-sub">{fmt(b.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}{b.cancelled ? ' · Cancelled' : ''}</p>
       <MoneySummary $={$} s={s} />
+      <HourlyLine biz={biz} b={b} $={$} />
 
       <section className="bs-sec">
         <h3 className="sub-h">Service</h3>
@@ -47,8 +48,12 @@ export default function BookingSheet({ id, onClose }) {
             <input className="input" type="time" value={b.time || ''} onChange={(e) => set({ time: e.target.value })} />
           </label>
           <label className="f">
-            Hours
+            Hours shooting
             <input className="input" inputMode="decimal" placeholder="1" value={b.hours ?? ''} onChange={(e) => set({ hours: e.target.value })} />
+          </label>
+          <label className="f">
+            Hours editing
+            <input className="input" inputMode="decimal" placeholder={sv && num(sv.editHours) ? `${num(sv.editHours)} (usual)` : '0'} value={b.editHours ?? ''} onChange={(e) => set({ editHours: e.target.value })} />
           </label>
           <div className="f full">
             Location
@@ -174,5 +179,22 @@ function Delivery({ biz, b, set }) {
         {b.gallery && /^https?:\/\//.test(b.gallery) && <a className="mini" href={b.gallery} target="_blank" rel="noreferrer">Open gallery ↗</a>}
       </div>
     </section>
+  );
+}
+
+/** What this shoot paid per hour of real work (shooting + editing), after fees, expenses and tax. */
+function HourlyLine({ biz, b, $ }) {
+  if (b.cancelled) return null;
+  const h = perHour(biz, b, $);
+  if (!h) return <p className="muted small hourly-line">Add hours shooting and editing to see what this shoot paid per hour.</p>;
+  const hrs = (v) => `${+v.toFixed(2)} hr`;
+  return (
+    <p className="hourly-line">
+      <b className={h.rate >= 0 ? 'pos' : 'neg'}>{money(Math.round(h.rate))}/hr</b> real profit
+      <span className="muted">
+        {' '}· {hrs(h.total)} of work ({hrs(h.shoot)} shooting{h.edit ? ` + ${hrs(h.edit)} editing${h.guessed ? ', usual' : ''}` : ''})
+      </span>
+      {h.unknown && <span className="muted"> · editing not logged yet</span>}
+    </p>
   );
 }

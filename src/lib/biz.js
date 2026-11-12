@@ -2,11 +2,11 @@
 // Home and Stats pages are built from.
 //
 // Records (one row each in the `records` table):
-//   booking  { date, time, hours, serviceId, pkg, title, clientId, location, price, tip, method,
+//   booking  { date, time, hours, editHours, serviceId, pkg, title, clientId, location, price, tip, method,
 //              expenses: [{ id, cat, label, amount }], miles, notes, cancelled,
 //              due, delivered, gallery }   due: gallery due date (blank = shoot + turnaround); delivered: date sent
-//   client   { name, phone, email, handle, notes }
-//   service  { name, color, kind, unit: 'flat' | 'hour', price, hours, includes, packages: [...], addons: [...], notes, order }
+//   client   { name, phone, email, handle, notes, source, referredBy }   source: how they found you (SOURCES)
+//   service  { name, color, kind, unit: 'flat' | 'hour', price, hours, editHours, includes, packages: [...], addons: [...], notes, order }
 //   taxpay   { date, amount, note }      money you actually sent in for taxes
 //   expense  { date, cat, label, amount, repeat: '' | 'monthly' | 'yearly', until, notes }
 //            business costs not tied to one shoot (gear, software, insurance…); repeating ones count each time
@@ -124,6 +124,49 @@ export function titleOf(biz, b) {
   if (b.title) return b.title;
   const sv = serviceOf(biz, b.serviceId);
   return [sv ? sv.name : 'Booking', b.pkg].filter(Boolean).join(' — ');
+}
+
+/* ---------- Real profit per hour ---------- */
+
+const given = (v) => v !== undefined && v !== null && String(v).trim() !== '';
+
+/**
+ * The time a booking really took: shooting hours plus editing hours. Editing comes from the booking
+ * when you logged it, otherwise from the service's usual editing time (marked as a guess).
+ */
+export function timeOf(biz, b) {
+  const sv = serviceOf(biz, b.serviceId);
+  const shoot = num(b.hours) || (sv ? num(sv.hours) : 0);
+  const logged = given(b.editHours);
+  const edit = logged ? num(b.editHours) : sv ? num(sv.editHours) : 0;
+  return { shoot, edit, total: shoot + edit, logged, guessed: !logged && edit > 0, unknown: !logged && !edit };
+}
+
+/** What you keep per hour of work: after Stripe fees, shoot expenses, mileage and the tax set-aside. */
+export function perHour(biz, b, $ = b.$) {
+  const t = timeOf(biz, b);
+  return t.total > 0 ? { rate: $.keep / t.total, ...t } : null;
+}
+
+/** Real profit per hour for each service, best first. Only finished shoots with hours count. */
+export function hourlyByService(biz, list) {
+  const m = new Map();
+  for (const b of done(list)) {
+    const t = timeOf(biz, b);
+    if (!t.total) continue;
+    const k = b.serviceId || 'none';
+    const g = m.get(k) || { key: k, n: 0, keep: 0, gross: 0, shoot: 0, edit: 0, noEdit: 0 };
+    g.n++;
+    g.keep += b.$.keep;
+    g.gross += b.$.gross;
+    g.shoot += t.shoot;
+    g.edit += t.edit;
+    if (t.unknown) g.noEdit++;
+    m.set(k, g);
+  }
+  return [...m.values()]
+    .map((g) => ({ ...g, hours: g.shoot + g.edit, rate: g.keep / (g.shoot + g.edit) }))
+    .sort((a, b) => b.rate - a.rate);
 }
 
 /* ---------- Totals ---------- */
@@ -356,6 +399,57 @@ export function clientFor(biz, name) {
   const hit = biz.clients.find((c) => norm(c.name) === n);
   if (hit) return hit.id;
   return put('client', { name: name.trim(), createdAt: Date.now() }).id;
+}
+
+/* ---------- Client history ---------- */
+
+export const SOURCES = [
+  { id: 'instagram', name: 'Instagram', c: '#ff86b8' },
+  { id: 'referral', name: 'Referral', c: '#7fdca0' },
+  { id: 'google', name: 'Google', c: '#7cc4ff' },
+  { id: 'website', name: 'Website', c: '#ffcf5c' },
+  { id: 'facebook', name: 'Facebook', c: '#bba9ff' },
+  { id: 'tiktok', name: 'TikTok', c: '#ff9f4a' },
+  { id: 'school', name: 'School / campus', c: '#e8e4d8' },
+  { id: 'other', name: 'Other', c: '#b6b4ad' },
+];
+export const sourceOf = (id) => SOURCES.find((x) => x.id === id) || null;
+
+/** Days since a date (positive for the past). */
+export const daysSince = (d, today = todayISO()) => Math.round((parse(today) - parse(d)) / 864e5);
+
+/** Where clients come from: clients, bookings, income and how many came back, per source. */
+export function bySource(biz) {
+  const m = new Map();
+  for (const c of biz.clients) {
+    const k = c.source || 'unknown';
+    const st = clientStats(biz, c.id);
+    if (!st.list.length) continue;
+    const g = m.get(k) || { key: k, clients: 0, bookings: 0, gross: 0, repeat: 0 };
+    g.clients++;
+    g.bookings += st.list.length;
+    g.gross += st.gross;
+    if (st.list.length > 1) g.repeat++;
+    m.set(k, g);
+  }
+  return [...m.values()].sort((a, b) => b.gross - a.gross);
+}
+
+/**
+ * Past clients worth checking in with: their last shoot was 9 to 18 months ago and nothing is booked
+ * (families, seniors' siblings and yearly sessions tend to come around about once a year). Longest-loyal first.
+ */
+export function followUps(biz, today = todayISO()) {
+  const out = [];
+  for (const c of biz.clients) {
+    if (c.followedUp && daysSince(c.followedUp, today) < 120) continue;
+    const st = clientStats(biz, c.id);
+    if (!st.last || st.last > today) continue;
+    const ago = daysSince(st.last, today);
+    if (ago < 270 || ago > 550) continue;
+    out.push({ c, st, ago });
+  }
+  return out.sort((a, b) => b.st.list.length - a.st.list.length || b.st.gross - a.st.gross);
 }
 
 /** Bookings this client has had, newest first, and what they add up to. */

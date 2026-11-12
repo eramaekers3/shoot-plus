@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { plural } from '../lib/text.js';
-import { useBiz, money, sum, done, num } from '../lib/biz.js';
+import { useBiz, money, sum, done, num, hourlyByService } from '../lib/biz.js';
 import { openService, newBooking, open } from '../lib/open.js';
 import CardStack from '../components/CardStack.jsx';
 import { Icon } from '../components/ui.jsx';
@@ -40,6 +40,7 @@ export default function PricingView() {
 
 function ServiceCard({ biz, s }) {
   const st = useMemo(() => sum(done(biz.live.filter((b) => b.serviceId === s.id))), [biz, s.id]);
+  const hr = useMemo(() => hourlyByService(biz, biz.live.filter((b) => b.serviceId === s.id))[0], [biz, s.id]);
   const unit = s.unit === 'hour' ? '/hr' : '';
   return (
     <section className="card svc-card" style={{ '--c': s.color }} aria-labelledby={`sv-${s.id}`}>
@@ -68,7 +69,7 @@ function ServiceCard({ biz, s }) {
         </div>
       )}
       {s.notes && <p className="muted small">{s.notes}</p>}
-      {st.n > 0 && <p className="svc-stat">Booked {plural(st.n, 'time')} · avg {money(Math.round(st.avg))}{st.hours ? ` · ${money(Math.round(st.gross / st.hours))}/hr` : ''}</p>}
+      {st.n > 0 && <p className="svc-stat">Booked {plural(st.n, 'time')} · avg {money(Math.round(st.avg))}{hr ? ` · you keep about ${money(Math.round(hr.rate))}/hr` : ''}{hr && hr.noEdit === hr.n ? ' (no editing time yet)' : ''}</p>}
       <div className="btn-row">
         <button className="mini" onClick={() => openService(s.id)}>Edit</button>
         <button className="mini sun" onClick={() => newBooking({ serviceId: s.id })}><Icon name="plus" size={14} /> Book this</button>

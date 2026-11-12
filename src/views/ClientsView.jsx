@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { fmt } from '../lib/dates.js';
 import { norm, plural } from '../lib/text.js';
-import { useBiz, clientStats, money } from '../lib/biz.js';
+import { useBiz, clientStats, money, bySource, followUps, sourceOf, SOURCES } from '../lib/biz.js';
 import { openClient, open } from '../lib/open.js';
 import { Icon } from '../components/ui.jsx';
 
@@ -30,6 +30,10 @@ export default function ClientsView() {
   }, [biz, q, sort]);
 
   const repeat = rows.filter((r) => r.st.list.length > 1).length;
+  const sources = useMemo(() => bySource(biz), [biz]);
+  const nudges = useMemo(() => followUps(biz), [biz]);
+  const [src, setSrc] = useState('');
+  const shown = src ? rows.filter((r) => (r.c.source || 'unknown') === src) : rows;
 
   return (
     <>
@@ -51,10 +55,19 @@ export default function ClientsView() {
         </div>
       </div>
 
+      {!q && nudges.length > 0 && <CheckInCard nudges={nudges} />}
+      {!q && sources.some((g) => g.key !== 'unknown') && <SourcesCard groups={sources} picked={src} onPick={setSrc} />}
+
       <section className="card">
-        {rows.length ? (
+        {src && (
+          <div className="src-filter">
+            <span>From <b>{src === 'unknown' ? 'not set' : sourceOf(src).name}</b></span>
+            <button className="mini" onClick={() => setSrc('')}>Show all</button>
+          </div>
+        )}
+        {shown.length ? (
           <ul className="rows">
-            {rows.map(({ c, st }) => (
+            {shown.map(({ c, st }) => (
               <li className="row cl-row" key={c.id}>
                 <button className="bk-open" onClick={() => openClient(c.id)}>
                   <span className="avatar" aria-hidden="true">{initials(c.name)}</span>
@@ -63,6 +76,7 @@ export default function ClientsView() {
                     <span className="bk-meta">
                       <span>{plural(st.list.length, 'booking')}</span>
                       {st.last && <span>last {fmt(st.last, { month: 'short', year: 'numeric' })}</span>}
+                      {c.source && sourceOf(c.source) && <span>{c.source === 'referral' && c.referredBy ? `via ${c.referredBy}` : sourceOf(c.source).name}</span>}
                       {c.handle && <span>{c.handle}</span>}
                     </span>
                   </span>
@@ -87,3 +101,71 @@ export const initials = (name = '') =>
     .slice(0, 2)
     .map((w) => w[0].toUpperCase())
     .join('') || '?';
+
+const ago = (days) => (days < 365 ? `${Math.round(days / 30)} months ago` : `${(days / 365).toFixed(1).replace(/\.0$/, '')} years ago`);
+
+/** Past clients it's been about a year since. */
+function CheckInCard({ nudges }) {
+  return (
+    <section className="card" aria-labelledby="ci-h">
+      <div className="card-head">
+        <h2 id="ci-h">Check in with</h2>
+        <span className="meta">{plural(nudges.length, 'client')}</span>
+      </div>
+      <p className="muted small" style={{ marginTop: 0 }}>Last shoot 9 to 18 months ago and nothing booked.</p>
+      <ul className="rows">
+        {nudges.slice(0, 5).map(({ c, st, ago: d }) => (
+          <li className="row cl-row" key={c.id}>
+            <button className="bk-open" onClick={() => openClient(c.id)}>
+              <span className="avatar" aria-hidden="true">{initials(c.name)}</span>
+              <span className="row-title bk-text">
+                <span className="bk-title">{c.name}</span>
+                <span className="bk-meta">
+                  <span>last shoot {ago(d)}</span>
+                </span>
+              </span>
+              <span className="bk-amt"><b>{money(st.gross)}</b></span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {nudges.length > 5 && <p className="muted small">+{nudges.length - 5} more.</p>}
+    </section>
+  );
+}
+
+/** Where clients come from: income, clients and how many came back, per source. Tap one to filter. */
+function SourcesCard({ groups, picked, onPick }) {
+  const max = Math.max(1, ...groups.map((g) => g.gross));
+  const unknown = groups.find((g) => g.key === 'unknown');
+  const known = groups.filter((g) => g.key !== 'unknown');
+  const best = [...known].filter((g) => g.repeat && g.clients >= 2).sort((a, b) => b.repeat / b.clients - a.repeat / a.clients)[0];
+  return (
+    <section className="card" aria-labelledby="src-h">
+      <div className="card-head">
+        <h2 id="src-h">Where they come from</h2>
+        <span className="meta">income · clients</span>
+      </div>
+      <ul className="bar-rows">
+        {known.map((g, i) => {
+          const s = sourceOf(g.key) || SOURCES.at(-1);
+          return (
+            <li key={g.key}>
+              <button aria-pressed={picked === g.key} onClick={() => onPick(picked === g.key ? '' : g.key)}>
+                <span className="br-name"><i style={{ background: s.c }} />{s.name}</span>
+                <span className="br-bar"><i style={{ width: `${(g.gross / max) * 100}%`, background: s.c, '--i': i }} /></span>
+                <b>{money(g.gross)}<small> · {g.clients}</small></b>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {best && <p className="muted small">Clients from <b className="ink">{sourceOf(best.key).name}</b> come back most: {best.repeat} of {best.clients} booked again.</p>}
+      {unknown && (
+        <button className="link-btn" onClick={() => onPick(picked === 'unknown' ? '' : 'unknown')}>
+          {plural(unknown.clients, 'client')} without a source yet ({money(unknown.gross)}) · tap to fill them in
+        </button>
+      )}
+    </section>
+  );
+}

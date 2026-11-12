@@ -58,6 +58,10 @@ export default function ServiceSheet({ id, onClose }) {
           Delivery days
           <input className="input" inputMode="numeric" placeholder={`Default`} value={s.turnaround ?? ''} onChange={(e) => set('turnaround', e.target.value)} onBlur={() => set('turnaround', s.turnaround === '' ? '' : num(s.turnaround))} />
         </label>
+        <label className="f">
+          Editing hours <span className="muted-n">(usual)</span>
+          <input className="input" inputMode="decimal" placeholder="0" value={s.editHours ?? ''} onChange={(e) => set('editHours', e.target.value)} onBlur={() => set('editHours', s.editHours === '' ? '' : num(s.editHours))} />
+        </label>
         <label className="f full">
           What’s included
           <textarea className="input" rows={2} placeholder="1 hour, 25+ edited photos, online gallery" value={s.includes || ''} onChange={(e) => set('includes', e.target.value)} />

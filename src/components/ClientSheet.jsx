@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { put, useRecord } from '../store.js';
-import { fmt } from '../lib/dates.js';
+import { fmt, todayISO } from '../lib/dates.js';
 import { plural } from '../lib/text.js';
-import { useBiz, clientStats, money, removeWithUndo } from '../lib/biz.js';
+import { useBiz, clientStats, money, removeWithUndo, SOURCES, daysSince } from '../lib/biz.js';
 import { newBooking, closeSheet } from '../lib/open.js';
 import { toast } from '../lib/toast.js';
 import { Sheet, Icon } from './ui.jsx';
@@ -19,7 +19,7 @@ const FIELDS = [
 export default function ClientSheet({ id, onClose }) {
   const biz = useBiz();
   const saved = useRecord(id);
-  const [draft, setDraft] = useState({ name: '', phone: '', email: '', handle: '', notes: '' });
+  const [draft, setDraft] = useState({ name: '', phone: '', email: '', handle: '', notes: '', source: '', referredBy: '' });
   const [confirm, setConfirm] = useState(false);
   const isNew = !id;
   const c = isNew ? draft : saved;
@@ -31,12 +31,14 @@ export default function ClientSheet({ id, onClose }) {
   return (
     <Sheet title={isNew ? 'New client' : c.name || 'Client'} onClose={onClose}>
       {st && st.list.length > 0 && (
-        <div className="tiles tiles-3 cl-tiles">
+        <div className="tiles cl-tiles cl-tiles-4">
           <div className="tile"><span>Paid you</span><b>{money(st.gross)}</b></div>
           <div className="tile"><span>Bookings</span><b>{st.list.length}</b></div>
           <div className="tile"><span>Since</span><b>{fmt(st.first, { month: 'short', year: '2-digit' })}</b></div>
+          <div className="tile"><span>{st.last > todayISO() ? 'Next shoot' : 'Last shoot'}</span><b>{lastLabel(st.last)}</b></div>
         </div>
       )}
+      {st && <CheckIn c={saved} st={st} />}
 
       <div className="form-grid">
         {FIELDS.map(([k, label, type, ph]) => (
@@ -45,6 +47,23 @@ export default function ClientSheet({ id, onClose }) {
             <input className="input" type={type} placeholder={ph} value={c[k] || ''} onChange={(e) => set(k, e.target.value)} autoFocus={isNew && k === 'name'} />
           </label>
         ))}
+        <div className="f full">
+          How they found you
+          <div className="chips src-chips">
+            {SOURCES.map((x) => (
+              <button key={x.id} type="button" className="chip cat-chip" style={{ '--c': x.c }} aria-pressed={c.source === x.id} onClick={() => set('source', c.source === x.id ? '' : x.id)}>
+                <i />{x.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        {c.source === 'referral' && (
+          <label className="f full">
+            Referred by
+            <input className="input" list="cl-names" placeholder="Who sent them your way?" value={c.referredBy || ''} onChange={(e) => set('referredBy', e.target.value)} />
+            <datalist id="cl-names">{biz.clients.filter((x) => x.id !== id).map((x) => <option key={x.id} value={x.name} />)}</datalist>
+          </label>
+        )}
         <label className="f full">
           Notes
           <textarea className="input" rows={3} placeholder="Likes golden hour, has a dog, referred by…" value={c.notes || ''} onChange={(e) => set('notes', e.target.value)} />
@@ -100,5 +119,34 @@ export default function ClientSheet({ id, onClose }) {
         </>
       )}
     </Sheet>
+  );
+}
+
+const lastLabel = (d) => {
+  const ago = daysSince(d);
+  if (ago < 0) return fmt(d, { month: 'short', day: 'numeric' });
+  if (ago < 45) return ago <= 1 ? (ago ? 'Yesterday' : 'Today') : `${ago}d ago`;
+  if (ago < 365) return `${Math.round(ago / 30)}mo ago`;
+  return `${(ago / 365).toFixed(1).replace(/\.0$/, '')}y ago`;
+};
+
+/** A nudge when it's been about a year since their last shoot and nothing is booked. */
+function CheckIn({ c, st }) {
+  const today = todayISO();
+  if (!st.last || st.last > today) return null;
+  const ago = daysSince(st.last, today);
+  if (ago < 270 || ago > 550) return null;
+  if (c.followedUp && daysSince(c.followedUp, today) < 120) {
+    return <p className="muted small cl-checked">Checked in {fmt(c.followedUp, { month: 'short', day: 'numeric' })}.</p>;
+  }
+  return (
+    <div className="cl-nudge">
+      <Icon name="clock" size={18} />
+      <span>
+        <b>Good time to check in</b>
+        <span>Their last shoot was {lastLabel(st.last)}. Families and yearly sessions often come back around now.</span>
+      </span>
+      <button className="mini" onClick={() => { put('client', { ...c, followedUp: today }); toast('Marked as checked in'); }}>Done</button>
+    </div>
   );
 }

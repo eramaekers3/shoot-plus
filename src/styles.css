@@ -1026,3 +1026,30 @@ form.inline .num-in { flex: 0 1 92px; }
 .web-list li > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .web-list .tag-kind { white-space: nowrap; max-width: 42%; overflow: hidden; text-overflow: ellipsis; }
 .web-list .tag-kind.new { background: color-mix(in srgb, var(--mint) 18%, var(--raised)); color: var(--mint); }
+
+/* Real profit per hour */
+.hourly-line { margin: 6px 2px 2px; font-size: 13.5px; line-height: 1.4; }
+.hourly-line b { font-weight: 800; font-variant-numeric: tabular-nums; }
+.hr-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hr-rows li { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px; }
+.hr-name { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14.5px; min-width: 0; }
+.hr-name i { flex: none; width: 9px; height: 9px; border-radius: 3px; background: var(--c); }
+.hr-rate { font: var(--display-weight) 18px/1.1 var(--display); font-variant-numeric: tabular-nums; text-align: right; }
+.hr-rate small { font: 600 12px var(--body, inherit); color: var(--muted); }
+.hr-bar { grid-column: 1 / -1; height: 6px; border-radius: 4px; background: var(--raised); overflow: hidden; }
+.hr-bar i { display: block; height: 100%; border-radius: 4px; background: var(--c); }
+.hr-sub { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+
+/* Client history */
+.cl-tiles-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.cl-tiles-4 .tile { padding: 9px 8px; min-width: 0; }
+.cl-tiles-4 .tile b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-tiles-4 .tile span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+.cl-nudge { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin: -4px 0 14px; border-radius: 14px; background: color-mix(in srgb, var(--sun) 12%, var(--raised)); border: 1px solid color-mix(in srgb, var(--sun) 35%, transparent); color: var(--sun); }
+.cl-nudge > span { flex: 1; display: flex; flex-direction: column; gap: 1px; color: var(--ink); font-size: 13px; line-height: 1.35; }
+.cl-nudge b { font-size: 14px; }
+.cl-nudge > span > span { color: var(--muted); }
+.cl-checked { margin: -6px 2px 12px; }
+.src-chips { margin-top: 4px; }
+.src-filter { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; font-size: 14px; }
+.bar-rows button[aria-pressed='true'] .br-name { color: var(--sun); }

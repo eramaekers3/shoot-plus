@@ -6,6 +6,7 @@ import {
   useBiz, sum, inYear, done, cumulative, groupBy, expensesByCat, taxYear, years, money, num,
   totals, monthsFull, overheadByCat, yearRange, avgTurnaround,
   clientName, thisYear, removeWithUndo, titleOf,
+  hourlyByService,
 } from '../lib/biz.js';
 import { openBooking, openClient, goTab } from '../lib/open.js';
 import { setMode } from '../lib/mode.js';
@@ -56,6 +57,7 @@ export default function StatsView() {
           { id: 'months', title: y === 'all' ? 'By year' : 'By month', node: <Months biz={biz} y={y} /> },
           { id: 'pace', title: 'Compared with last year', node: y === 'all' ? null : <Pace biz={biz} y={y} /> },
           { id: 'services', title: 'By service', node: <Services biz={biz} list={list} /> },
+          { id: 'hourly', title: 'Real profit per hour', node: <Hourly biz={biz} list={list} /> },
           { id: 'clients', title: 'Clients', node: <Clients biz={biz} list={list} y={y} /> },
           { id: 'expenses', title: 'Expenses', node: <Expenses biz={biz} list={list} t={t} y={y} /> },
           { id: 'when', title: 'When & where', node: <WhenWhere list={list} /> },
@@ -190,6 +192,45 @@ function Services({ biz, list }) {
       <SplitBar parts={rows.map((r) => ({ key: r.key, v: r.v, c: r.c }))} />
       <BarRows rows={rows} format={money} />
       {best && <p className="muted small">Best paying per hour: <b className="ink">{best.label}</b> at about {money(Math.round(best.v / best.hours))}/hr.</p>}
+    </section>
+  );
+}
+
+/* ---------- Real profit per hour ---------- */
+
+function Hourly({ biz, list }) {
+  const rows = hourlyByService(biz, list);
+  if (!rows.length) return null;
+  const max = Math.max(1, ...rows.map((r) => r.rate));
+  const all = rows.reduce((a, r) => ({ keep: a.keep + r.keep, hours: a.hours + r.hours }), { keep: 0, hours: 0 });
+  const noEdit = rows.reduce((t, r) => t + r.noEdit, 0);
+  const hrs = (v) => `${Math.round(v * 10) / 10} hr`;
+  return (
+    <section className="card" aria-labelledby="hr-h">
+      <div className="card-head">
+        <h2 id="hr-h">Real profit per hour</h2>
+        <span className="meta">{money(Math.round(all.keep / all.hours))}/hr overall</span>
+      </div>
+      <p className="muted small" style={{ marginTop: 0 }}>What you keep after Stripe fees, shoot expenses, mileage and tax, for every hour shooting and editing.</p>
+      <ul className="hr-rows">
+        {rows.map((r) => {
+          const sv = biz.serviceById[r.key];
+          return (
+            <li key={r.key} style={{ '--c': sv ? sv.color : 'var(--dim)' }}>
+              <span className="hr-name"><i />{sv ? sv.name : 'No service'}</span>
+              <b className="hr-rate">{money(Math.round(r.rate))}<small>/hr</small></b>
+              <span className="hr-bar"><i style={{ width: `${Math.max(0, r.rate / max) * 100}%` }} /></span>
+              <span className="hr-sub">
+                {plural(r.n, 'shoot')} · {hrs(r.shoot)} shooting{r.edit ? ` + ${hrs(r.edit)} editing` : ''}
+                {r.noEdit ? ` · ${r.noEdit} without editing time` : ''}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {noEdit > 0 && (
+        <p className="muted small">Shoots without editing time look better per hour than they really were. Set the usual editing hours on each service in Pricing, or log them on a booking.</p>
+      )}
     </section>
   );
 }
