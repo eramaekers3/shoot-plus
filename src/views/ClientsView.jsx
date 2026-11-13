@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { fmt } from '../lib/dates.js';
 import { norm, plural } from '../lib/text.js';
-import { useBiz, clientStats, money, bySource, followUps, sourceOf, SOURCES } from '../lib/biz.js';
+import { useBiz, clientStats, money, bySource, sourceOf, SOURCES } from '../lib/biz.js';
 import { openClient, open } from '../lib/open.js';
 import { Icon } from '../components/ui.jsx';
 
@@ -31,7 +31,6 @@ export default function ClientsView() {
 
   const repeat = rows.filter((r) => r.st.list.length > 1).length;
   const sources = useMemo(() => bySource(biz), [biz]);
-  const nudges = useMemo(() => followUps(biz), [biz]);
   const [src, setSrc] = useState('');
   const shown = src ? rows.filter((r) => (r.c.source || 'unknown') === src) : rows;
 
@@ -55,7 +54,6 @@ export default function ClientsView() {
         </div>
       </div>
 
-      {!q && nudges.length > 0 && <CheckInCard nudges={nudges} />}
       {!q && sources.some((g) => g.key !== 'unknown') && <SourcesCard groups={sources} picked={src} onPick={setSrc} />}
 
       <section className="card">
@@ -101,38 +99,6 @@ export const initials = (name = '') =>
     .slice(0, 2)
     .map((w) => w[0].toUpperCase())
     .join('') || '?';
-
-const ago = (days) => (days < 365 ? `${Math.round(days / 30)} months ago` : `${(days / 365).toFixed(1).replace(/\.0$/, '')} years ago`);
-
-/** Past clients it's been about a year since. */
-function CheckInCard({ nudges }) {
-  return (
-    <section className="card" aria-labelledby="ci-h">
-      <div className="card-head">
-        <h2 id="ci-h">Check in with</h2>
-        <span className="meta">{plural(nudges.length, 'client')}</span>
-      </div>
-      <p className="muted small" style={{ marginTop: 0 }}>Last shoot 9 to 18 months ago and nothing booked.</p>
-      <ul className="rows">
-        {nudges.slice(0, 5).map(({ c, st, ago: d }) => (
-          <li className="row cl-row" key={c.id}>
-            <button className="bk-open" onClick={() => openClient(c.id)}>
-              <span className="avatar" aria-hidden="true">{initials(c.name)}</span>
-              <span className="row-title bk-text">
-                <span className="bk-title">{c.name}</span>
-                <span className="bk-meta">
-                  <span>last shoot {ago(d)}</span>
-                </span>
-              </span>
-              <span className="bk-amt"><b>{money(st.gross)}</b></span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {nudges.length > 5 && <p className="muted small">+{nudges.length - 5} more.</p>}
-    </section>
-  );
-}
 
 /** Where clients come from: income, clients and how many came back, per source. Tap one to filter. */
 function SourcesCard({ groups, picked, onPick }) {

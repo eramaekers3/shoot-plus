@@ -435,23 +435,6 @@ export function bySource(biz) {
   return [...m.values()].sort((a, b) => b.gross - a.gross);
 }
 
-/**
- * Past clients worth checking in with: their last shoot was 9 to 18 months ago and nothing is booked
- * (families, seniors' siblings and yearly sessions tend to come around about once a year). Longest-loyal first.
- */
-export function followUps(biz, today = todayISO()) {
-  const out = [];
-  for (const c of biz.clients) {
-    if (c.followedUp && daysSince(c.followedUp, today) < 120) continue;
-    const st = clientStats(biz, c.id);
-    if (!st.last || st.last > today) continue;
-    const ago = daysSince(st.last, today);
-    if (ago < 270 || ago > 550) continue;
-    out.push({ c, st, ago });
-  }
-  return out.sort((a, b) => b.st.list.length - a.st.list.length || b.st.gross - a.st.gross);
-}
-
 /** Bookings this client has had, newest first, and what they add up to. */
 export function clientStats(biz, id) {
   const list = biz.live.filter((b) => b.clientId === id);

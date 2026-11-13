@@ -38,7 +38,6 @@ export default function ClientSheet({ id, onClose }) {
           <div className="tile"><span>{st.last > todayISO() ? 'Next shoot' : 'Last shoot'}</span><b>{lastLabel(st.last)}</b></div>
         </div>
       )}
-      {st && <CheckIn c={saved} st={st} />}
 
       <div className="form-grid">
         {FIELDS.map(([k, label, type, ph]) => (
@@ -129,24 +128,3 @@ const lastLabel = (d) => {
   if (ago < 365) return `${Math.round(ago / 30)}mo ago`;
   return `${(ago / 365).toFixed(1).replace(/\.0$/, '')}y ago`;
 };
-
-/** A nudge when it's been about a year since their last shoot and nothing is booked. */
-function CheckIn({ c, st }) {
-  const today = todayISO();
-  if (!st.last || st.last > today) return null;
-  const ago = daysSince(st.last, today);
-  if (ago < 270 || ago > 550) return null;
-  if (c.followedUp && daysSince(c.followedUp, today) < 120) {
-    return <p className="muted small cl-checked">Checked in {fmt(c.followedUp, { month: 'short', day: 'numeric' })}.</p>;
-  }
-  return (
-    <div className="cl-nudge">
-      <Icon name="clock" size={18} />
-      <span>
-        <b>Good time to check in</b>
-        <span>Their last shoot was {lastLabel(st.last)}. Families and yearly sessions often come back around now.</span>
-      </span>
-      <button className="mini" onClick={() => { put('client', { ...c, followedUp: today }); toast('Marked as checked in'); }}>Done</button>
-    </div>
-  );
-}
