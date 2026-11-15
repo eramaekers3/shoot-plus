@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useSettings, useSyncStatus, clearSample } from './store.js';
+import { usePushKeepAlive } from './lib/push.js';
 import { Icon, Toaster, LogoMark } from './components/ui.jsx';
 import { DEFAULT_LOGO } from './lib/logo.js';
 import { useTheme, useLogoIcon } from './lib/theme.js';
@@ -44,6 +45,7 @@ export default function App() {
   const [settings, setSettings] = useState(false);
   const s = useSettings();
   const sync = useSyncStatus();
+  usePushKeepAlive(!!sync.email);
   const sheet = useOpenSheet();
   const mode = useMode();
   const addingExpense = tab === 'bookings' && mode === 'expenses';

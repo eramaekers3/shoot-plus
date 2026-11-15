@@ -6,6 +6,9 @@ import {
   useSettings, saveSettings, useSyncStatus, sync, signIn, signUp, signOut, clearSample, eraseAll, recentlyDeleted, putMany,
 } from '../store.js';
 import { toast } from '../lib/toast.js';
+import { minToLabel } from '../lib/dates.js';
+import { enablePush, disablePush, sendTestPush, usePushState } from '../lib/push.js';
+import { DEFAULT_NOTIFY } from '../../api/_push-core.js';
 import { useBiz, exportCSV, num, money } from '../lib/biz.js';
 import { StripeSettings } from './Stripe.jsx';
 import { settingsVersions, recentChanges, restoreVersion, settingsSummary, kindName, labelOf, exportBackup } from '../lib/history.js';
@@ -41,6 +44,8 @@ export default function SettingsSheet({ onClose }) {
           <AuthForm />
         )}
       </section>
+
+      <NotifySection signedIn={!!st.email} />
 
       <LookSection />
 
@@ -211,6 +216,83 @@ function BusinessSection() {
 }
 
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+const timeOptions = (fromH, toH) => Array.from({ length: (toH - fromH) * 4 + 1 }, (_, i) => fromH * 60 + i * 15);
+// A real iPhone switch: it taps when you flip it.
+const sw = { switch: '' };
+
+function NotifySection({ signedIn }) {
+  const s = useSettings();
+  const n = { ...DEFAULT_NOTIFY, ...(s.notify || {}) };
+  const setN = (changes) => saveSettings({ notify: { ...n, ...changes } });
+  const [state, refresh] = usePushState();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const run = (fn, done) => async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      await fn();
+      if (done) toast(done);
+    } catch (e) {
+      setErr(e.message);
+    }
+    setBusy(false);
+    refresh();
+  };
+  const time = (key, label, from, to) => (
+    <select className="input" value={n[key]} onChange={(e) => setN({ [key]: +e.target.value })} aria-label={label}>
+      {timeOptions(from, to).map((m) => <option key={m} value={m}>{minToLabel(m)}</option>)}
+    </select>
+  );
+
+  return (
+    <section className="set-sec">
+      <h3>Notifications</h3>
+      {state === 'install' && (
+        <p className="muted small">On iPhone, notifications only work from the Home Screen app. In Safari, tap <b>Share → Add to Home Screen</b>, open shoot+ from there, then come back here.</p>
+      )}
+      {state === 'unsupported' && <p className="muted small">This browser can’t receive notifications.</p>}
+      {state === 'blocked' && <p className="muted small">Notifications are blocked for shoot+. Turn them on in iPhone <b>Settings → Notifications → shoot+</b>, then reopen the app.</p>}
+      {(state === 'off' || state === 'on') && !signedIn && <p className="muted small">Sign in above first, so reminders can reach this phone.</p>}
+      {(state === 'off' || state === 'on') && signedIn && (
+        <div className="btn-row" style={{ marginTop: 0 }}>
+          {state === 'off' ? (
+            <button className="btn" onClick={run(enablePush, 'Notifications on for this phone')} disabled={busy}>Turn on for this phone</button>
+          ) : (
+            <>
+              <button className="btn ghost" onClick={run(sendTestPush, 'Test sent')} disabled={busy}>Send a test</button>
+              <button className="btn ghost" onClick={run(disablePush, 'Notifications off for this phone')} disabled={busy}>Turn off</button>
+            </>
+          )}
+        </div>
+      )}
+      {err && <p className="err">{err}</p>}
+
+      <div className="toggles">
+        <label className="toggle">
+          <input type="checkbox" {...sw} checked={n.eve} onChange={(e) => setN({ eve: e.target.checked })} />
+          <span>The evening before a shoot</span>
+          {time('eveAt', 'Evening-before reminder time', 16, 22)}
+        </label>
+        <label className="toggle">
+          <input type="checkbox" {...sw} checked={n.lead} onChange={(e) => setN({ lead: e.target.checked })} />
+          <span>An hour before a shoot (when it has a start time)</span>
+        </label>
+        <label className="toggle">
+          <input type="checkbox" {...sw} checked={n.gallery} onChange={(e) => setN({ gallery: e.target.checked })} />
+          <span>Galleries due tomorrow, today or a day late</span>
+          {time('galleryAt', 'Gallery reminder time', 7, 12)}
+        </label>
+        <label className="toggle">
+          <input type="checkbox" {...sw} checked={n.taxes} onChange={(e) => setN({ taxes: e.target.checked })} />
+          <span>Quarterly estimated taxes (a week and a day before)</span>
+        </label>
+      </div>
+    </section>
+  );
+}
 
 function HistorySection({ signedIn }) {
   const biz = useBiz();
