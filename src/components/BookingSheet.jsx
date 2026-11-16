@@ -42,7 +42,7 @@ export default function BookingSheet({ id, onClose }) {
         <ServicePick biz={biz} value={b.serviceId} onPick={(serviceId) => { set({ serviceId, pkg: '', ...restep(serviceId, '') }); learn(b.stripeId, serviceId); }} />
         <PackagePick s={sv} value={b.pkg} onPick={(p) => { set(p ? { pkg: p.name, ...(b.stripeId ? {} : { price: p.price }), hours: p.hours || b.hours, ...restep(b.serviceId, p.name) } : { pkg: '', ...restep(b.serviceId, '') }); learn(b.stripeId, b.serviceId, p ? p.name : ''); }} />
         <label className="f">
-          Title <span className="muted-n">(optional — shown instead of the service name)</span>
+          Title <span className="muted-n">(optional)</span>
           <input className="input" placeholder={sv ? sv.name : 'Booking'} value={b.title || ''} onChange={(e) => set({ title: e.target.value })} />
         </label>
       </section>
@@ -50,18 +50,18 @@ export default function BookingSheet({ id, onClose }) {
       <section className="bs-sec">
         <h3 className="sub-h">When & where</h3>
         <DatePick value={b.date} onChange={(date) => set({ date })} />
-        <div className="form-grid">
+        <div className="form-grid form-grid-3">
           <label className="f">
             Time
             <input className="input" type="time" value={b.time || ''} onChange={(e) => set({ time: e.target.value })} />
           </label>
           <label className="f">
-            Hours shooting
+            Shoot hrs
             <input className="input" inputMode="decimal" placeholder="1" value={b.hours ?? ''} onChange={(e) => set({ hours: e.target.value })} />
           </label>
           <label className="f">
-            Hours editing
-            <input className="input" inputMode="decimal" placeholder={sv && num(sv.editHours) ? `${num(sv.editHours)} (usual)` : '0'} value={b.editHours ?? ''} onChange={(e) => set({ editHours: e.target.value })} />
+            Edit hrs
+            <input className="input" inputMode="decimal" placeholder={sv && num(sv.editHours) ? `${num(sv.editHours)}` : '0'} value={b.editHours ?? ''} onChange={(e) => set({ editHours: e.target.value })} />
           </label>
           <div className="f full">
             Location

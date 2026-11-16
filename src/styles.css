@@ -248,8 +248,9 @@ textarea.input { resize: vertical; line-height: 1.45; }
 form.inline { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 form.inline .input { flex: 1 1 180px; width: auto; }
 form.inline .num-in { flex: 0 1 92px; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 10px; }
-.f { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
+.form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.f { min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .full { grid-column: 1 / -1; }
 .f .input, .f .chips { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink); }
 .f-label { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
@@ -425,7 +426,7 @@ form.inline .num-in { flex: 0 1 92px; }
 }
 .sheet {
   position: relative;
-  width: 100%; max-width: 560px; overflow-y: auto;
+  width: 100%; max-width: 560px; overflow-y: auto; overflow-x: hidden;
   background: var(--surface);
   border: 1px solid var(--line); border-bottom: 0; border-radius: 24px 24px 0 0;
   padding: 18px max(18px, env(safe-area-inset-right, 0px)) calc(26px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px));
@@ -529,7 +530,8 @@ form.inline .num-in { flex: 0 1 92px; }
 @media (max-width: 420px) {
   .dayhead h1, .page-head h1 { font-size: 36px; }
   .flip { font-size: 25px; }
-  .form-grid { grid-template-columns: 1fr 1fr; }
+  .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 
@@ -1098,3 +1100,14 @@ input.step-label:focus { border-bottom-color: var(--line); }
 .step-add { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .step-add .input { flex: 1; min-width: 0; }
 .bs-sec .step-list { --c: var(--sun); margin-bottom: 14px; }
+
+/* iPhone date and time pickers: Safari gives them their own width and height (wider than the field,
+   taller than other inputs) and centers the text. Make them sit like every other input. */
+.input[type='date'], .input[type='time'] {
+  -webkit-appearance: none; appearance: none; display: block;
+  width: 100%; min-width: 0; max-width: 100%; height: 44px; line-height: 22px; text-align: left;
+}
+.input[type='date']::-webkit-date-and-time-value, .input[type='time']::-webkit-date-and-time-value { text-align: left; margin: 0; min-height: 22px; }
+.input[type='date']::-webkit-calendar-picker-indicator, .input[type='time']::-webkit-calendar-picker-indicator { opacity: 0.5; }
+input.input:not([type='date']):not([type='time']):not(.num-in) { height: 44px; }
+.money-in .input { height: 44px; }
