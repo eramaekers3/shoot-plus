@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { put, useRecord } from '../store.js';
-import { useBiz, calc, titleOf, removeWithUndo, money, dueOf, stageOf, turnaroundOf, perHour, num } from '../lib/biz.js';
-import { deliver, dueLabel } from './Queue.jsx';
+import { useBiz, calc, titleOf, removeWithUndo, money, dueOf, stageOf, turnaroundOf, perHour, num, isPaid } from '../lib/biz.js';
+import { dueLabel } from './Queue.jsx';
+import StepList from './Steps.jsx';
+import { stepsFor, untouched } from '../lib/steps.js';
 import { fmt, todayISO, parse } from '../lib/dates.js';
 import { closeSheet, openClient, newBooking } from '../lib/open.js';
 import { toast } from '../lib/toast.js';
@@ -9,7 +11,7 @@ import { unlink, learn } from '../lib/stripe.js';
 import { openPayment } from '../lib/open.js';
 import { Sheet, Icon } from './ui.jsx';
 import {
-  ServicePick, PackagePick, DatePick, PlaceInput, ClientPick, MethodPick, ExpenseList, MoneySummary, MoneyIn, priceFor,
+  ServicePick, PackagePick, DatePick, PlaceInput, ClientPick, MethodPick, ExpenseList, MoneySummary, MoneyIn, priceFor, PaidPick,
 } from './BookingFields.jsx';
 
 /** Every detail of a booking, all editable. Changes save as you make them. */
@@ -22,17 +24,23 @@ export default function BookingSheet({ id, onClose }) {
   const sv = biz.serviceById[b.serviceId];
   const $ = calc(b, s);
   const set = (changes) => put('booking', { ...b, ...changes, updatedAt: Date.now() });
+  // A new service or package brings its own steps, as long as you haven't started checking them off.
+  const restep = (serviceId, pkg) => (untouched(b.steps) ? { steps: stepsFor(biz.serviceById[serviceId], pkg, b.date) } : {});
+  const paid = isPaid(b);
 
   return (
     <Sheet title={titleOf(biz, b)} onClose={onClose}>
-      <p className="sheet-sub">{fmt(b.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}{b.cancelled ? ' · Cancelled' : ''}</p>
+      <p className="sheet-sub">
+        {fmt(b.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+        {b.cancelled ? ' · Cancelled' : !paid ? <> · <span className="unpaid-tag">Not paid yet</span></> : ''}
+      </p>
       <MoneySummary $={$} s={s} />
       <HourlyLine biz={biz} b={b} $={$} />
 
       <section className="bs-sec">
         <h3 className="sub-h">Service</h3>
-        <ServicePick biz={biz} value={b.serviceId} onPick={(serviceId) => { set({ serviceId, pkg: '' }); learn(b.stripeId, serviceId); }} />
-        <PackagePick s={sv} value={b.pkg} onPick={(p) => { set(p ? { pkg: p.name, ...(b.stripeId ? {} : { price: p.price }), hours: p.hours || b.hours } : { pkg: '' }); learn(b.stripeId, b.serviceId, p ? p.name : ''); }} />
+        <ServicePick biz={biz} value={b.serviceId} onPick={(serviceId) => { set({ serviceId, pkg: '', ...restep(serviceId, '') }); learn(b.stripeId, serviceId); }} />
+        <PackagePick s={sv} value={b.pkg} onPick={(p) => { set(p ? { pkg: p.name, ...(b.stripeId ? {} : { price: p.price }), hours: p.hours || b.hours, ...restep(b.serviceId, p.name) } : { pkg: '', ...restep(b.serviceId, '') }); learn(b.stripeId, b.serviceId, p ? p.name : ''); }} />
         <label className="f">
           Title <span className="muted-n">(optional — shown instead of the service name)</span>
           <input className="input" placeholder={sv ? sv.name : 'Booking'} value={b.title || ''} onChange={(e) => set({ title: e.target.value })} />
@@ -72,6 +80,7 @@ export default function BookingSheet({ id, onClose }) {
 
       <section className="bs-sec">
         <h3 className="sub-h">Payment</h3>
+        {!b.stripeId && <PaidPick value={paid} onChange={(v) => set({ paid: v, ...(v ? {} : { method: '' }) })} />}
         <div className="form-grid">
           <label className="f">
             Price
@@ -97,7 +106,7 @@ export default function BookingSheet({ id, onClose }) {
         )}
         <div className="f">
           Paid with
-          <MethodPick methods={s.methods} value={b.method} onChange={(method) => set({ method })} />
+          <MethodPick methods={s.methods} value={b.method} onChange={(method) => set({ method, ...(method ? { paid: true } : {}) })} />
         </div>
       </section>
 
@@ -121,8 +130,8 @@ export default function BookingSheet({ id, onClose }) {
 
       <div className="btn-row edit-sec">
         <button className="btn ghost" onClick={() => {
-          const { id: _id, ...rest } = b;
-          newBooking({ ...rest, date: undefined, stripeId: undefined });
+          const { id: _id, steps: _s, delivered: _d, finished: _f, gallery: _g, due: _due, paid: _p, ...rest } = b;
+          newBooking({ ...rest, date: undefined, stripeId: undefined, method: '' });
         }}>
           <Icon name="copy" size={16} /> Duplicate
         </button>
@@ -144,26 +153,29 @@ export default function BookingSheet({ id, onClose }) {
   );
 }
 
-/** Editing and delivery: due date, gallery link, and whether it's been delivered. */
+/** The work for this shoot (its steps), the gallery's due date and link. */
 function Delivery({ biz, b, set }) {
   const today = todayISO();
   const stage = stageOf(b, today);
   const due = dueOf(biz, b);
   const days = Math.round((parse(due) - parse(today)) / 864e5);
   if (b.cancelled) return null;
+  const label = stage === 'delivered'
+    ? (b.finished ? `Finished ${fmt(b.finished, { month: 'short', day: 'numeric' })}` : b.delivered ? `Delivered ${fmt(b.delivered, { month: 'short', day: 'numeric' })}` : 'Done')
+    : b.delivered ? `Delivered ${fmt(b.delivered, { month: 'short', day: 'numeric' })}`
+    : stage === 'upcoming' ? `Due ${fmt(due, { month: 'short', day: 'numeric' })}` : dueLabel(days);
   return (
     <section className="bs-sec">
       <div className="sub-head">
-        <h3 className="sub-h">Gallery</h3>
-        <span className={`due-tag${stage === 'delivered' ? ' done' : stage === 'editing' && days < 0 ? ' late' : ''}`}>
-          {stage === 'delivered' ? (b.delivered ? `Delivered ${fmt(b.delivered, { month: 'short', day: 'numeric' })}` : 'Delivered') : stage === 'upcoming' ? `Due ${fmt(due, { month: 'short', day: 'numeric' })}` : dueLabel(days)}
-        </span>
+        <h3 className="sub-h">Steps</h3>
+        <span className={`due-tag${stage === 'delivered' || b.delivered ? ' done' : stage === 'editing' && days < 0 ? ' late' : ''}`}>{label}</span>
       </div>
+      <StepList biz={biz} b={b} editable />
       <div className="form-grid">
         <label className="f">
-          Due
+          Gallery due
           <input className="input" type="date" value={b.due || ''} placeholder={due} onChange={(e) => set({ due: e.target.value })} />
-          <span className="f-hint">{b.due ? 'Set by you' : `${fmt(due, { month: 'short', day: 'numeric' })} · ${turnaroundOf(biz, b)} days after the shoot`}</span>
+          <span className="f-hint">{b.due ? 'Set by you' : `${fmt(due, { month: 'short', day: 'numeric' })} · ${turnaroundOf(biz, b)} days after`}</span>
         </label>
         <label className="f">
           Delivered on
@@ -174,10 +186,7 @@ function Delivery({ biz, b, set }) {
           <input className="input" type="url" inputMode="url" placeholder="https://…" value={b.gallery || ''} onChange={(e) => set({ gallery: e.target.value })} />
         </label>
       </div>
-      <div className="btn-row">
-        {stage === 'editing' && <button className="btn" onClick={(e) => deliver(b, e.currentTarget)}>Mark delivered</button>}
-        {b.gallery && /^https?:\/\//.test(b.gallery) && <a className="mini" href={b.gallery} target="_blank" rel="noreferrer">Open gallery ↗</a>}
-      </div>
+      {b.gallery && /^https?:\/\//.test(b.gallery) && <div className="btn-row"><a className="mini" href={b.gallery} target="_blank" rel="noreferrer">Open gallery ↗</a></div>}
     </section>
   );
 }

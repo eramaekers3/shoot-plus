@@ -106,7 +106,8 @@ export function seed() {
       location: pick(PLACES),
       price,
       tip: rand() < 0.25 ? pick([10, 20, 25, 40]) : 0,
-      method: pick(METHODS),
+      // Upcoming shoots and the last couple of weeks' aren't paid yet.
+      ...(d > -14 ? { paid: false, method: '' } : { method: pick(METHODS) }),
       miles: Math.round(rand() * 22),
       expenses,
       notes: '',

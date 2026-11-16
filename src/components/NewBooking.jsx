@@ -6,8 +6,9 @@ import { haptic } from '../lib/haptics.js';
 import { cheer } from '../lib/cheer.js';
 import { Sheet, Icon } from './ui.jsx';
 import {
-  ServicePick, PackagePick, DatePick, PlaceInput, ClientPick, MethodPick, ExpenseList, MoneySummary, MoneyIn, priceFor,
+  ServicePick, PackagePick, DatePick, PlaceInput, ClientPick, MethodPick, ExpenseList, MoneySummary, MoneyIn, priceFor, PaidPick,
 } from './BookingFields.jsx';
+import { stepsFor } from '../lib/steps.js';
 
 const STEPS = ['What', 'When', 'Who', 'Money'];
 
@@ -19,7 +20,7 @@ export default function NewBooking({ preset = {}, onClose }) {
   const [saved, setSaved] = useState(null);
   const [b, setB] = useState(() => ({
     serviceId: '', pkg: '', title: '', date: todayISO(), time: '', hours: '', location: '', clientId: '',
-    price: '', tip: '', method: '', miles: '', expenses: [], notes: '', ...Object.fromEntries(Object.entries(preset || {}).filter(([, v]) => v !== undefined)),
+    price: '', tip: '', method: '', paid: false, miles: '', expenses: [], notes: '', ...Object.fromEntries(Object.entries(preset || {}).filter(([, v]) => v !== undefined)),
   }));
   const [showExp, setShowExp] = useState((b.expenses || []).length > 0 || !!b.miles);
   const sheet = useRef(null);
@@ -47,13 +48,15 @@ export default function NewBooking({ preset = {}, onClose }) {
     // A name typed but not picked (or a Stripe payer's name) becomes the client: an existing one with that name, or a new one.
     const { newClientName, ...rest } = b;
     const clientId = rest.clientId || (newClientName && newClientName.trim() ? clientFor(biz, newClientName) : '');
-    const out = saveBooking({ ...rest, clientId, createdAt: Date.now() });
+    const paid = !!(rest.paid || rest.stripeId);
+    const steps = rest.steps && rest.steps.length ? rest.steps : stepsFor(biz.serviceById[rest.serviceId], rest.pkg, rest.date);
+    const out = saveBooking({ ...rest, paid, steps, clientId, createdAt: Date.now() });
     markLinked(rest.stripeId, out.id);
     learn(rest.stripeId, rest.serviceId, rest.pkg);
     haptic('success');
     const fab = document.querySelector('.fab');
     setSaved(out);
-    setTimeout(() => cheer(fab, { text: `+${money($.gross)}`, sub: `${money($.keep)} to keep` }), 380);
+    setTimeout(() => cheer(fab, paid ? { text: `+${money($.gross)}`, sub: `${money($.keep)} to keep` } : { text: 'Booked', sub: `${money($.gross)} when they pay` }), 380);
     setTimeout(onClose, 1500);
   };
 
@@ -68,6 +71,7 @@ export default function NewBooking({ preset = {}, onClose }) {
             <path d="M30 52 44 66 71 36" />
           </svg>
           <p className="cap-done-title">{money($.gross)} · {sv ? sv.name : 'Booking'}</p>
+          {!b.paid && !b.stripeId && <p className="muted small">Not paid yet — it counts toward income once you mark it paid.</p>}
           <p className="muted">{fmt(b.date, { weekday: 'long', month: 'long', day: 'numeric' })}{saved.clientId && biz.clientById[saved.clientId] ? ` · ${biz.clientById[saved.clientId].name}` : ''}</p>
         </div>
       </Sheet>
@@ -132,7 +136,8 @@ export default function NewBooking({ preset = {}, onClose }) {
 
         {step === 3 && (
           <div className="cap-q">
-            <p className="cap-label">How was it paid?</p>
+            <p className="cap-label">Payment</p>
+            {!b.stripeId && <PaidPick value={b.paid} onChange={(paid) => set({ paid, ...(paid ? {} : { method: '' }) })} />}
             <div className="form-grid">
               <label className="f">
                 Price
@@ -145,7 +150,7 @@ export default function NewBooking({ preset = {}, onClose }) {
             </div>
             <div className="f">
               Paid with
-              <MethodPick methods={s.methods} value={b.method} onChange={(method) => set({ method })} />
+              <MethodPick methods={s.methods} value={b.method} onChange={(method) => set({ method, ...(method ? { paid: true } : {}) })} />
             </div>
             {showExp ? (
               <div className="f">

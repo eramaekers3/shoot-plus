@@ -244,6 +244,7 @@ export function presetFrom(p, services = list('service')) {
     price: kept(p),
     date: p.date,
     method: 'Stripe',
+    paid: true,
     expenses: feeLine(p),
     notes: [p.what, p.via].filter(Boolean).join(' · '),
     newClientName: p.name || '',
@@ -255,7 +256,7 @@ export function presetFrom(p, services = list('service')) {
 export function linkTo(p, b) {
   ensureMethod();
   const expenses = (b.expenses || []).filter((e) => e.label !== 'Stripe fee');
-  put('booking', { ...b, method: 'Stripe', stripeId: p.id, expenses: [...expenses, ...feeLine(p)], updatedAt: Date.now() });
+  put('booking', { ...b, method: 'Stripe', paid: true, stripeId: p.id, expenses: [...expenses, ...feeLine(p)], updatedAt: Date.now() });
   patch(p.id, { status: 'linked', bookingId: b.id });
   toast('Payment attached');
 }
@@ -335,7 +336,7 @@ export function unlink(b) {
 export function matchesFor(biz, p) {
   const day = parse(p.date).getTime();
   const name = norm(p.name);
-  return biz.live
+  return biz.booked
     .filter((b) => !b.stripeId)
     .map((b) => {
       const days = Math.abs(parse(b.date).getTime() - day) / 864e5;

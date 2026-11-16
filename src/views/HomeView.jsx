@@ -10,6 +10,16 @@ import BookingRow from '../components/BookingRow.jsx';
 import { CountUp, Icon, Ring } from '../components/ui.jsx';
 import { NewPayments } from '../components/Stripe.jsx';
 import { EditQueue } from '../components/Queue.jsx';
+import { put } from '../store.js';
+import { haptic } from '../lib/haptics.js';
+import { toast } from '../lib/toast.js';
+
+function markPaid(b) {
+  const { $: _m, ...rest } = b;
+  put('booking', { ...rest, paid: true, updatedAt: Date.now() });
+  haptic('success');
+  toast(`${money(b.$.gross)} marked paid`, { label: 'Undo', run: () => put('booking', { ...rest, updatedAt: Date.now() }) });
+}
 
 export default function HomeView() {
   const biz = useBiz();
@@ -19,8 +29,9 @@ export default function HomeView() {
   const month = useMemo(() => sum(done(inMonth(biz.live, ym))), [biz, ym]);
   const last = useMemo(() => sum(inMonth(biz.live, prevMonth(ym))), [biz, ym]);
   const year = useMemo(() => totals(biz, done(inYear(biz.live, y)), `${y}-01-01`, todayISO()), [biz, y]);
-  const soon = useMemo(() => ahead(biz.live), [biz]);
-  const recent = useMemo(() => done(biz.live).slice(0, 5), [biz]);
+  const soon = useMemo(() => ahead(biz.booked), [biz]);
+  const recent = useMemo(() => done(biz.booked).slice(0, 5), [biz]);
+  const owed = useMemo(() => done(biz.unpaid), [biz]);
   const tax = useMemo(() => taxYear(biz, y), [biz, y]);
   const monthName = fmt(today, { month: 'long' });
 
@@ -47,6 +58,7 @@ export default function HomeView() {
         cards={[
           { id: 'stripe', title: 'New from Stripe', node: <NewPayments /> },
           { id: 'queue', title: 'To edit', node: <EditQueue /> },
+          { id: 'unpaid', title: 'Not paid yet', node: <Unpaid biz={biz} list={owed} /> },
           { id: 'year', title: 'This year', node: <YearCard biz={biz} year={year} y={y} /> },
           { id: 'soon', title: 'Coming up', node: <Soon biz={biz} list={soon} /> },
           { id: 'recent', title: 'Recent', node: <Recent biz={biz} list={recent} /> },
@@ -110,6 +122,28 @@ function Soon({ biz, list }) {
           <button className="mini sun" onClick={() => newBooking()}><Icon name="plus" size={14} /> Add a booking</button>
         </div>
       )}
+    </section>
+  );
+}
+
+/** Shoots that happened but haven't been paid for: they count toward income once marked paid. */
+function Unpaid({ biz, list }) {
+  if (!list.length) return null;
+  const total = list.reduce((t, b) => t + b.$.gross, 0);
+  return (
+    <section className="card" aria-labelledby="unpaid-h">
+      <div className="card-head">
+        <h2 id="unpaid-h">Not paid yet</h2>
+        <span className="meta unpaid-tag">{money(total)} owed</span>
+      </div>
+      <ul className="rows">
+        {list.slice(0, 6).map((b) => (
+          <BookingRow key={b.id} biz={biz} b={b} action={
+            <button className="mini" onClick={() => markPaid(b)}>Paid</button>
+          } />
+        ))}
+      </ul>
+      {list.length > 6 && <p className="muted small">+{list.length - 6} more in Bookings.</p>}
     </section>
   );
 }

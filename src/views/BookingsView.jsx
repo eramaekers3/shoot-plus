@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { fmt, todayISO } from '../lib/dates.js';
 import { norm, plural } from '../lib/text.js';
-import { useBiz, sum, money, years, clientName, titleOf } from '../lib/biz.js';
+import { useBiz, sum, money, years, clientName, titleOf, isPaid } from '../lib/biz.js';
 import BookingRow from '../components/BookingRow.jsx';
 import { Icon } from '../components/ui.jsx';
 import { newBooking } from '../lib/open.js';
@@ -55,13 +55,18 @@ function BookingsList() {
     return [...m.entries()];
   }, [list]);
 
-  const total = sum(list.filter((b) => !b.cancelled));
+  const kept = list.filter((b) => !b.cancelled);
+  const total = sum(kept.filter(isPaid));
+  const owed = sum(kept.filter((b) => !isPaid(b)));
   const today = todayISO();
   const cancelledCount = biz.all.filter((b) => b.cancelled).length;
 
   return (
     <>
-      <p className="page-sub">{plural(total.n, 'booking')} · {money(total.gross)} · {money(total.profit)} profit before business expenses</p>
+      <p className="page-sub">
+        {plural(kept.length, 'booking')} · {money(total.gross)} paid · {money(total.profit)} profit before business expenses
+        {owed.n > 0 && <> · <span className="unpaid-tag">{money(owed.gross)} not paid yet</span></>}
+      </p>
 
       <div className="filters">
         <label className="search">
@@ -88,13 +93,14 @@ function BookingsList() {
         </section>
       ) : (
         groups.map(([ym, items]) => {
-          const t = sum(items.filter((b) => !b.cancelled));
+          const t = sum(items.filter((b) => !b.cancelled && isPaid(b)));
+          const due = sum(items.filter((b) => !b.cancelled && !isPaid(b)));
           const future = `${ym}-31` > today && ym > today.slice(0, 7);
           return (
             <section className="card month-card" key={ym}>
               <div className="card-head">
                 <h2>{fmt(`${ym}-01`, { month: 'long', year: 'numeric' })}{future && <span className="tag-soon">Upcoming</span>}</h2>
-                <span className="meta">{money(t.gross)}{t.costs > 0 && <span className="muted"> · {money(t.profit)} profit</span>}</span>
+                <span className="meta">{money(t.gross)}{t.costs > 0 && <span className="muted"> · {money(t.profit)} profit</span>}{due.n > 0 && <span className="unpaid-tag"> · {money(due.gross)} unpaid</span>}</span>
               </div>
               <ul className="rows">{items.map((b) => <BookingRow key={b.id} biz={biz} b={b} />)}</ul>
             </section>

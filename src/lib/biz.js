@@ -4,7 +4,10 @@
 // Records (one row each in the `records` table):
 //   booking  { date, time, hours, editHours, serviceId, pkg, title, clientId, location, price, tip, method,
 //              expenses: [{ id, cat, label, amount }], miles, notes, cancelled,
-//              due, delivered, gallery }   due: gallery due date (blank = shoot + turnaround); delivered: date sent
+//              due, delivered, gallery, paid, steps: [{ id, label, done }], finished }
+//            due: gallery due date (blank = shoot + turnaround); delivered: date sent
+//            paid: false until the client pays (bookings from before this existed have no flag and count as paid)
+//            steps: the work for this shoot, checked off one at a time (see stepsFor); finished: date the last one was checked
 //   client   { name, phone, email, handle, notes, source, referredBy }   source: how they found you (SOURCES)
 //   service  { name, color, kind, unit: 'flat' | 'hour', price, hours, editHours, includes, packages: [...], addons: [...], notes, order }
 //   taxpay   { date, amount, note }      money you actually sent in for taxes
@@ -82,6 +85,9 @@ export function calc(b, s) {
   return { price, tip, gross, listed, mileage, costs, profit, tax, keep: profit - tax };
 }
 
+/** Paid unless marked not paid yet. A Stripe payment always means paid. */
+export const isPaid = (b) => b.paid !== false || !!b.stripeId;
+
 export const isUpcoming = (b, today = todayISO()) => b.date > today;
 
 /* ---------- Reading everything ---------- */
@@ -101,10 +107,15 @@ export function useBiz() {
     const all = bookings
       .map((b) => ({ ...b, $: calc(b, s) }))
       .sort(byDateDesc);
+    const booked = all.filter((b) => !b.cancelled);
     return {
       s,
       all,
-      live: all.filter((b) => !b.cancelled),
+      // Every shoot on the books (paid or not): the calendar, the editing queue, client history.
+      booked,
+      // Shoots that have been paid: everything that adds up money.
+      live: booked.filter(isPaid),
+      unpaid: booked.filter((b) => !isPaid(b)),
       clients: [...clients].sort((a, b) => norm(a.name).localeCompare(norm(b.name))),
       services: [...services].sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || norm(a.name).localeCompare(norm(b.name))),
       taxpays: [...taxpays].sort((a, b) => b.date.localeCompare(a.date)),
@@ -258,8 +269,14 @@ export const turnaroundOf = (biz, b) => {
 };
 export const dueOf = (biz, b) => b.due || addDays(b.date, turnaroundOf(biz, b));
 
-/** Where a booking is: 'upcoming', 'editing', or 'delivered'. */
+/** Where a booking is: 'upcoming', 'editing', or 'delivered' (all done). */
 export function stageOf(b, today = todayISO()) {
+  if (b.steps && b.steps.length) {
+    if (b.steps.every((x) => x.done)) return 'delivered';
+    if (b.date > today) return 'upcoming';
+    if (b.date < QUEUE_START && !b.due && b.delivered) return 'delivered';
+    return 'editing';
+  }
   if (b.delivered) return 'delivered';
   if (b.date > today) return 'upcoming';
   if (b.date < QUEUE_START && !b.due) return 'delivered';
@@ -269,7 +286,7 @@ export function stageOf(b, today = todayISO()) {
 /** Shoots waiting to be edited and delivered, soonest due first. */
 export function editQueue(biz) {
   const today = todayISO();
-  return biz.live
+  return biz.booked
     .filter((b) => stageOf(b, today) === 'editing')
     .map((b) => {
       const due = dueOf(biz, b);
@@ -281,7 +298,7 @@ export function editQueue(biz) {
 
 /** How long delivery has taken, on average, for galleries you marked delivered. */
 export function avgTurnaround(biz) {
-  const list = biz.live.filter((b) => b.delivered && b.delivered >= b.date);
+  const list = biz.booked.filter((b) => b.delivered && b.delivered >= b.date);
   if (!list.length) return null;
   const days = list.reduce((t, b) => t + (parse(b.delivered) - parse(b.date)) / 864e5, 0) / list.length;
   const onTime = list.filter((b) => b.delivered <= dueOf(biz, b)).length / list.length;
@@ -437,8 +454,8 @@ export function bySource(biz) {
 
 /** Bookings this client has had, newest first, and what they add up to. */
 export function clientStats(biz, id) {
-  const list = biz.live.filter((b) => b.clientId === id);
-  return { list, ...sum(done(list)), first: list.at(-1) && list.at(-1).date, last: list[0] && list[0].date };
+  const list = biz.booked.filter((b) => b.clientId === id);
+  return { list, ...sum(done(list.filter(isPaid))), first: list.at(-1) && list.at(-1).date, last: list[0] && list[0].date };
 }
 
 export const relDate = (d) => {
@@ -463,7 +480,7 @@ export const prevMonth = (ym) => {
 
 /** A spreadsheet of every booking (opens in Numbers, Excel or Google Sheets). */
 export function exportCSV(biz) {
-  const head = ['Date', 'Time', 'Service', 'Package', 'Title', 'Client', 'Location', 'Hours', 'Price', 'Tip', 'Paid with', 'Expenses', 'Miles', 'Mileage $', 'Profit', 'Tax set aside', 'Cancelled', 'Notes'];
+  const head = ['Date', 'Time', 'Service', 'Package', 'Title', 'Client', 'Location', 'Hours', 'Price', 'Tip', 'Paid', 'Paid with', 'Expenses', 'Miles', 'Mileage $', 'Profit', 'Tax set aside', 'Cancelled', 'Notes'];
   const q = (v) => {
     const t = String(v ?? '');
     return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
@@ -472,7 +489,7 @@ export function exportCSV(biz) {
     const sv = serviceOf(biz, b.serviceId);
     return [
       b.date, b.time || '', sv ? sv.name : '', b.pkg || '', b.title || '', clientName(biz, b.clientId), b.location || '', b.hours || '',
-      b.$.price.toFixed(2), b.$.tip.toFixed(2), b.method || '', b.$.listed.toFixed(2), b.miles || '', b.$.mileage.toFixed(2),
+      b.$.price.toFixed(2), b.$.tip.toFixed(2), isPaid(b) ? 'yes' : 'not yet', b.method || '', b.$.listed.toFixed(2), b.miles || '', b.$.mileage.toFixed(2),
       b.$.profit.toFixed(2), b.$.tax.toFixed(2), b.cancelled ? 'yes' : '', b.notes || '',
     ].map(q).join(',');
   });

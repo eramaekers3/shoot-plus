@@ -98,8 +98,8 @@ function Overview({ t, prev, y }) {
         <div className="tile"><span>All expenses</span><b>{money(t.allCosts)}</b></div>
         <div className="tile"><span>After tax</span><b className="pos">{money(t.keep)}</b></div>
         <div className="tile"><span>Avg booking</span><b>{money(Math.round(t.avg))}</b></div>
-        <div className="tile"><span>Per hour shooting</span><b>{t.hours ? money(Math.round(t.gross / t.hours)) : '—'}</b></div>
-        <div className="tile"><span>Kept of each $1</span><b>{Math.round(margin * 100)}¢</b></div>
+        <div className="tile"><span>Per hour</span><b>{t.hours ? money(Math.round(t.gross / t.hours)) : '—'}</b></div>
+        <div className="tile"><span>Kept per $1</span><b>{Math.round(margin * 100)}¢</b></div>
       </div>
       {t.tip > 0 && <p className="muted small">Includes {money(t.tip)} in tips. {t.hours ? `${Math.round(t.hours)} hours behind the camera.` : ''}</p>}
     </section>
@@ -242,11 +242,11 @@ function Clients({ biz, list, y }) {
   if (!groups.length) return <Empty id="cl" title="Clients" />;
   // Repeat clients: booked more than once, ever.
   const everCount = new Map();
-  biz.live.forEach((b) => b.clientId && everCount.set(b.clientId, (everCount.get(b.clientId) || 0) + 1));
+  biz.booked.forEach((b) => b.clientId && everCount.set(b.clientId, (everCount.get(b.clientId) || 0) + 1));
   const repeat = groups.filter((g) => everCount.get(g.key) > 1);
   const repeatShare = repeat.reduce((t, g) => t + g.gross, 0) / (groups.reduce((t, g) => t + g.gross, 0) || 1);
   const firstSeen = new Map();
-  [...biz.live].reverse().forEach((b) => b.clientId && !firstSeen.has(b.clientId) && firstSeen.set(b.clientId, b.date));
+  [...biz.booked].reverse().forEach((b) => b.clientId && !firstSeen.has(b.clientId) && firstSeen.set(b.clientId, b.date));
   const fresh = y === 'all' ? groups.length : groups.filter((g) => (firstSeen.get(g.key) || '').startsWith(String(y))).length;
   return (
     <section className="card" aria-labelledby="cl-h">

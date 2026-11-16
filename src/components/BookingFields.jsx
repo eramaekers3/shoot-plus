@@ -153,6 +153,16 @@ function recentClients(biz) {
   return out;
 }
 
+/** Paid yet? New bookings start as not paid; picking how they paid (or Stripe) marks them paid. */
+export function PaidPick({ value, onChange }) {
+  return (
+    <div className="seg paid-seg" role="group" aria-label="Paid yet?">
+      <button type="button" aria-pressed={!value} onClick={() => onChange(false)}>Not paid yet</button>
+      <button type="button" aria-pressed={!!value} onClick={() => onChange(true)}>Paid</button>
+    </div>
+  );
+}
+
 export function MethodPick({ methods, value, onChange }) {
   return (
     <div className="chips">
@@ -195,8 +205,8 @@ export function MoneySummary({ $, s }) {
     <div className="m-sum">
       <div><span>Income</span><b>{money($.gross)}</b></div>
       <div className="minus"><span>Expenses</span><b>{money($.costs)}</b></div>
-      <div className="minus"><span>Tax ({s.taxRate}%)</span><b>{money($.tax)}</b></div>
-      <div className="keep"><span>You keep</span><b>{money($.keep)}</b></div>
+      <div className="minus"><span>Tax ({s.taxRate}%)</span><b>{money(Math.round($.tax))}</b></div>
+      <div className="keep"><span>You keep</span><b>{money(Math.round($.keep))}</b></div>
     </div>
   );
 }
