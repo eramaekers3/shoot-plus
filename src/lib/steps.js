@@ -30,6 +30,7 @@ export function stepLabels(service, pkgName) {
   if (has(text, /button/)) out.push({ label: 'Build button template' }, { label: 'Buttons designed' }, { label: 'Buttons made' });
   if (!video && has(text, /video|film|reel|media day/)) out.push({ label: 'Videos made' });
   out.push({ label: video ? 'Video delivered' : 'Gallery delivered', tag: 'deliver' });
+  out.push({ label: 'Post to socials' });
   out.push({ label: 'Everything finished', tag: 'final' });
   return out;
 }
